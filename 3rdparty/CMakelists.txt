@@ -1,0 +1,31 @@
+cmake_minimum_required(VERSION 3.30)
+project(Detours LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(libname lib_detours)
+set(DETOURS_SOURCE Detours)
+
+add_library(${libname} STATIC)
+target_include_directories(${libname} PRIVATE ${DETOURS_SOURCE})
+target_sources(${libname} PRIVATE
+    ${DETOURS_SOURCE}/creatwth.cpp
+    ${DETOURS_SOURCE}/detours.cpp
+    ${DETOURS_SOURCE}/disasm.cpp
+    ${DETOURS_SOURCE}/disolarm.cpp
+    ${DETOURS_SOURCE}/disolarm64.cpp
+    ${DETOURS_SOURCE}/disolia64.cpp
+    ${DETOURS_SOURCE}/disolx64.cpp
+    ${DETOURS_SOURCE}/disolx86.cpp
+    ${DETOURS_SOURCE}/image.cpp
+    ${DETOURS_SOURCE}/modules.cpp
+    ${DETOURS_SOURCE}/uimports.cpp
+    ${DETOURS_SOURCE}/detours.h
+    ${DETOURS_SOURCE}/detver.h
+)
+
+# This file is included and not compiled on its own
+set_property (
+    SOURCE ${DETOURS_SOURCE}/uimports.cpp
+    APPEND PROPERTY HEADER_FILE_ONLY true)
