@@ -96,12 +96,8 @@ NTSTATUS NTAPI LdrLoadDllMemoryExW(
 
 			auto dist = (CurEntry->BaseDllName.Length / sizeof(wchar_t)) - length;
 			bool equal = false;
-			if (dist == 0 || dist == 4) {
-				equal = !_wcsnicmp(DllName, CurEntry->BaseDllName.Buffer, length);
-			}
-			else {
-				continue;
-			}
+			if (!(dist == 0 || dist == 4)) continue;
+			equal = !_wcsnicmp(DllName, CurEntry->BaseDllName.Buffer, length);
 			
 			/* Check if name matches */
 			if (equal) {
