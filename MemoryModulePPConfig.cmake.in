@@ -1,0 +1,17 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# Find the detours library dependency (for the shared library)
+# Note: This assumes lib_detours is available in the system or through another package
+# You may need to adjust this based on how lib_detours is provided
+if(TARGET @PROJECT_NAME@::MemoryModulePP-shared)
+    # If lib_detours is part of this package, it will be in the targets file
+    # If it's external, you need to find it here:
+    # find_dependency(detours REQUIRED)
+endif()
+
+# Include the exported targets
+include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
+
+check_required_components(@PROJECT_NAME@)
