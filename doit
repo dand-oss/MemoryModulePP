@@ -1,0 +1,35 @@
+declare -r SRCDIR="${r3}/MemoryModulePP"
+declare -r BUILDDIR="${SRCDIR}/build"
+declare -r INSTALLDIR="i:/af/ports/vs17-64/memorymodulepp"
+
+# rm -rf ${BUILD}
+
+declare meth="vs"
+if [ "${meth}" = 'ninja' ] ; then
+    declare -a CMD=(
+        cmake -GNinja -Wno-dev
+        -DCMAKE_INSTALL_PREFIX="${INSTALLDIR}"
+        -B "${BUILDDIR}"
+        -S "${SRCDIR}"
+        )
+    "${CMD[@]}"
+
+    # build
+    cd ${BUILDDIR}
+    ninja
+
+    # run
+    declare -r PROG="${BUILDDIR}/test/MemoryModulePP.exe"
+    if [ -f ${PROG} ] ; then 
+        echo "done"
+        ${PROG}
+    fi
+else
+    declare -a CMD=(
+        cmake -G "Visual Studio 17 2022" -A 'x64' -Wno-dev
+        -DCMAKE_INSTALL_PREFIX="${INSTALLDIR}"
+        -B "${BUILDDIR}"
+        -S "${SRCDIR}"
+        )
+    "${CMD[@]}"
+fi
