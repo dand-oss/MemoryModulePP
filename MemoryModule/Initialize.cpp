@@ -5,6 +5,12 @@
 
 PMMP_GLOBAL_DATA MmpGlobalDataPtr;
 
+// DLL compliant access
+PMMP_GLOBAL_DATA GetMmpGlobalDataPtr()
+{
+   return MmpGlobalDataPtr;
+}
+
 #if MEMORY_MODULE_IS_PREVIEW(MEMORY_MODULE_MINOR_VERSION)
 #pragma message("WARNING: You are using a preview version of MemoryModulePP.")
 #endif
@@ -621,6 +627,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
 }
 #else
 #ifdef _HAS_AUTO_INITIALIZE
-const NTSTATUS Initializer = MmInitialize();
+static const NTSTATUS Initializer = MmInitialize();
 #endif
 #endif
