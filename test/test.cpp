@@ -1,6 +1,7 @@
 #include "../MemoryModule/stdafx.h"
 #include "../MemoryModule/LoadDllMemoryApi.h"
 #include <cstdio>
+#include <string>
 #pragma comment(lib,"ntdll.lib")
 
 static void DisplayStatus() {
@@ -20,20 +21,20 @@ LdrpHashTable = %p\n\n\
         MEMORY_MODULE_GET_MINOR_VERSION(gdp->MinorVersion),
         MEMORY_MODULE_IS_PREVIEW(gdp->MinorVersion) ? " Preview" : "",
         gdp->MmpFeatures,
-        gdp->MmpBaseAddressIndex->LdrpModuleBaseAddressIndex,
-        gdp->MmpBaseAddressIndex->NtdllLdrEntry,
+        (PVOID)gdp->MmpBaseAddressIndex->LdrpModuleBaseAddressIndex,
+        (PVOID)gdp->MmpBaseAddressIndex->NtdllLdrEntry,
         gdp->MmpBaseAddressIndex->_RtlRbInsertNodeEx,
         gdp->MmpBaseAddressIndex->_RtlRbRemoveNode,
         gdp->MmpInvertedFunctionTable->LdrpInvertedFunctionTable,
-        gdp->MmpLdrEntry->LdrpHashTable
+        (PVOID)gdp->MmpLdrEntry->LdrpHashTable
     );
 }
 
-static PVOID ReadDllFile(LPCSTR FileName) {
+static PVOID ReadDllFile(const std::string& FilePath) {
     LPVOID buffer;
     size_t size;
     FILE* f;
-    fopen_s(&f, FileName, "rb");
+    fopen_s(&f, FilePath.c_str(), "rb");
     if (!f)return 0;
     _fseeki64(f, 0, SEEK_END);
     if (!(size = _ftelli64(f))) {
@@ -49,23 +50,7 @@ static PVOID ReadDllFile(LPCSTR FileName) {
     return buffer;
 }
 
-PVOID ReadDllFile2(LPCSTR FileName) {
-    CHAR path[MAX_PATH + 4];
-    DWORD len = GetModuleFileNameA(nullptr, path, sizeof(path));
-
-    if (len) {
-        while (len && path[len] != '\\') --len;
-
-        if (len) {
-            strcpy_s(&path[len + 1], sizeof(path) - len - 1, FileName);
-            return ReadDllFile(path);
-        }
-    }
-
-    return nullptr;
-}
-
-int test() {
+int test(const std::string& dll_path) {
 
     HMODULE hModule = nullptr;
     FARPROC pfn = nullptr;
@@ -77,9 +62,9 @@ int test() {
     HGLOBAL gRes;
     char str[10];
 
-    LPVOID buffer = ReadDllFile2("a.dll");
+    LPVOID buffer = ReadDllFile(dll_path);
     if ( !buffer ) {
-        printf("failed to find a.dll.\n");
+        printf("failed to find %s.\n", dll_path.c_str());
         goto end;
     }
 
@@ -137,11 +122,28 @@ end:
     return 0;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
 
     DisplayStatus();
 
-    test();
+    std::string dll_path("a.dll"); // default
+    if ( argc > 1 ) {
+        // user supplied
+        dll_path = argv[1];
+    }
+    else {
+        // expect default dll in module directory
+        CHAR path[MAX_PATH + 4];
+        DWORD len = GetModuleFileNameA(nullptr, path, sizeof(path));
+
+        if (len) {
+            std::string mod_path(path);
+            const auto last_slash = mod_path.find_last_of("/\\") ;
+            dll_path = mod_path.substr(last_slash + 1) + dll_path;
+        }
+    }
+
+    test(dll_path);
 
     return 0;
 }
