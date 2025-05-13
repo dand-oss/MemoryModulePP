@@ -8,16 +8,13 @@ add_executable(${static_exename})
 set(shared_exename "mmtest-shared")
 add_executable(${shared_exename})
 
-set(reflect_exename "mmtest-reflect")
-add_executable(${reflect_exename})
-
 # static requires more libs
 target_link_libraries(${static_exename} PRIVATE lib_detours)
 
 # use install directory under build to assemble tests
 set( INSTALL_DIR "${CMAKE_BINARY_DIR}/install")
 
-foreach(exename ${static_exename} ${shared_exename} ${reflect_exename} )
+foreach(exename ${static_exename} ${shared_exename})
 
     # common sources and libs
     target_sources(${exename} PRIVATE test.cpp)

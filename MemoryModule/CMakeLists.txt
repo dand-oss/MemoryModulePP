@@ -9,20 +9,11 @@ add_library(${static_libname} STATIC)
 set(shared_libname "MemoryModulePP-shared")
 add_library(${shared_libname} SHARED)
 
-# Define reflective shared library target
-set(reflect_libname "MemoryModulePP-relfect-shared")
-add_library(${reflect_libname} SHARED)
-
 # turn on "reflection"
-target_compile_definitions(${reflect_libname} PRIVATE _USRDLL)
+target_compile_definitions(${shared_libname} PRIVATE _USRDLL)
 
 # link libraries for DLL
-foreach(libname ${shared_libname} ${reflect_libname})
-    target_link_libraries(${libname}
-      PRIVATE
-        lib_detours
-    )
-endforeach()
+target_link_libraries(${shared_libname} PRIVATE lib_detours)
 
 # Common sources and headers for both libraries
 set(common_sources
@@ -101,25 +92,8 @@ target_sources(${shared_libname}
       ${common_private_headers}
 )
 
-# Specify sources and headers for reflected library
-target_sources(${reflect_libname}
-  PRIVATE
-    ${common_sources}
-  PUBLIC
-    FILE_SET HEADERS
-    BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}
-    FILES
-      ${common_public_headers}
-  PRIVATE
-    FILE_SET private_headers
-    TYPE HEADERS
-    BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}
-    FILES
-      ${common_private_headers}
-)
-
 # Set include directories for libraries
-foreach(libname ${static_libname} ${shared_libname} ${reflect_libname} )
+foreach(libname ${static_libname} ${shared_libname})
   target_include_directories(${libname}
     PUBLIC
       $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
@@ -138,7 +112,7 @@ foreach(libname ${static_libname} ${shared_libname} ${reflect_libname} )
 endforeach()
 
 # Install libraries and public headers
-install(TARGETS ${static_libname} ${shared_libname} ${reflect_libname}
+install(TARGETS ${static_libname} ${shared_libname}
     EXPORT MemoryModulePPTargets
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
