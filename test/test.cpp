@@ -4,7 +4,12 @@
 #include <string>
 #pragma comment(lib,"ntdll.lib")
 
-static void DisplayStatus() {
+static int DisplayStatus() {
+    const auto gdp = GetMmpGlobalDataPtr();
+    if ( !gdp ) {
+        printf("failed GetMmpGlobalDataPtr().\n");
+        return -1 ;
+    }
     printf(
         "\
 MemoryModulePP [Version %d.%d%s]\n\n\t\
@@ -16,17 +21,18 @@ RtlRbRemoveNode = %p\n\n\t\
 LdrpInvertedFunctionTable = %p\n\n\t\
 LdrpHashTable = %p\n\n\
 ",
-        MmpGlobalDataPtr->MajorVersion,
-        MEMORY_MODULE_GET_MINOR_VERSION(MmpGlobalDataPtr->MinorVersion),
-        MEMORY_MODULE_IS_PREVIEW(MmpGlobalDataPtr->MinorVersion) ? " Preview" : "",
-        MmpGlobalDataPtr->MmpFeatures,
-        MmpGlobalDataPtr->MmpBaseAddressIndex->LdrpModuleBaseAddressIndex,
-        MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry,
-        MmpGlobalDataPtr->MmpBaseAddressIndex->_RtlRbInsertNodeEx,
-        MmpGlobalDataPtr->MmpBaseAddressIndex->_RtlRbRemoveNode,
-        MmpGlobalDataPtr->MmpInvertedFunctionTable->LdrpInvertedFunctionTable,
-        MmpGlobalDataPtr->MmpLdrEntry->LdrpHashTable
+        gdp->MajorVersion,
+        MEMORY_MODULE_GET_MINOR_VERSION(gdp->MinorVersion),
+        MEMORY_MODULE_IS_PREVIEW(gdp->MinorVersion) ? " Preview" : "",
+        gdp->MmpFeatures,
+        (PVOID)gdp->MmpBaseAddressIndex->LdrpModuleBaseAddressIndex,
+        (PVOID)gdp->MmpBaseAddressIndex->NtdllLdrEntry,
+        gdp->MmpBaseAddressIndex->_RtlRbInsertNodeEx,
+        gdp->MmpBaseAddressIndex->_RtlRbRemoveNode,
+        gdp->MmpInvertedFunctionTable->LdrpInvertedFunctionTable,
+        (PVOID)gdp->MmpLdrEntry->LdrpHashTable
     );
+    return 0 ;
 }
 
 static PVOID ReadDllFile(const std::string& FilePath) {
@@ -141,7 +147,10 @@ end:
 
 int main(int argc, char* argv[]) {
 
-    DisplayStatus();
+    // check MemoryModulePP initialization
+    if ( DisplayStatus() ) {
+        return -1 ;
+    }
 
     std::string dll_path("a.dll"); // default
     dll_path = argc > 1 ?  argv[1] : ResolveWithModulePath(dll_path);
