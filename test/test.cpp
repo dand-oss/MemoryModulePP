@@ -1,6 +1,7 @@
 #include "../MemoryModule/stdafx.h"
 #include "../MemoryModule/LoadDllMemoryApi.h"
 #include <cstdio>
+#include <string>
 #pragma comment(lib,"ntdll.lib")
 
 static void DisplayStatus() {
@@ -28,11 +29,11 @@ LdrpHashTable = %p\n\n\
     );
 }
 
-static PVOID ReadDllFile(LPCSTR FileName) {
+static PVOID ReadDllFile(const std::string& FilePath) {
     LPVOID buffer;
     size_t size;
     FILE* f;
-    fopen_s(&f, FileName, "rb");
+    fopen_s(&f, FilePath.c_str(), "rb");
     if (!f)return 0;
     _fseeki64(f, 0, SEEK_END);
     if (!(size = _ftelli64(f))) {
@@ -48,23 +49,24 @@ static PVOID ReadDllFile(LPCSTR FileName) {
     return buffer;
 }
 
-PVOID ReadDllFile2(LPCSTR FileName) {
+static std::string ResolveWithModulePath(const std::string& dll_path)
+{
+    std::string rc(dll_path) ;
+
+    // expect default dll in module directory
     CHAR path[MAX_PATH + 4];
-    DWORD len = GetModuleFileNameA(nullptr, path, sizeof(path));
+    const auto len = GetModuleFileNameA(nullptr, path, sizeof(path));
 
     if (len) {
-        while (len && path[len] != '\\') --len;
-
-        if (len) {
-            strcpy_s(&path[len + 1], sizeof(path) - len - 1, FileName);
-            return ReadDllFile(path);
-        }
+        const std::string mod_path(path);
+        const auto last_slash = mod_path.find_last_of("/\\") ;
+        rc = mod_path.substr(0, last_slash + 1) + dll_path;
     }
 
-    return nullptr;
+    return rc ;
 }
 
-int test() {
+int test(const std::string& dll_path) {
 
     HMODULE hModule = nullptr;
     FARPROC pfn = nullptr;
@@ -76,11 +78,12 @@ int test() {
     HGLOBAL gRes;
     char str[10];
 
-    LPVOID buffer = ReadDllFile2("a.dll");
+    LPVOID buffer = ReadDllFile(dll_path);
     if ( !buffer ) {
-        printf("failed to find a.dll.\n");
+        printf("failed to find %s.\n", dll_path.c_str());
         goto end;
     }
+    printf("%s read into memory.\n", dll_path.c_str());
 
     if (!NT_SUCCESS(LdrLoadDllMemoryExW(&hModule, nullptr, 0, buffer, 0, L"kernel64", nullptr))) {
         printf("LdrLoadDllMemoryExW failed.\n");
@@ -136,11 +139,14 @@ end:
     return 0;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
 
     DisplayStatus();
 
-    test();
+    std::string dll_path("a.dll"); // default
+    dll_path = argc > 1 ?  argv[1] : ResolveWithModulePath(dll_path);
+
+    test(dll_path);
 
     return 0;
 }
