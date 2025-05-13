@@ -65,7 +65,6 @@ PVOID ReadDllFile2(LPCSTR FileName) {
 }
 
 int test() {
-    LPVOID buffer = ReadDllFile2("a.dll");
 
     HMODULE hModule = nullptr;
     FARPROC pfn = nullptr;
@@ -77,7 +76,16 @@ int test() {
     HGLOBAL gRes;
     char str[10];
 
-    if (!NT_SUCCESS(LdrLoadDllMemoryExW(&hModule, nullptr, 0, buffer, 0, L"kernel64", nullptr))) goto end;
+    LPVOID buffer = ReadDllFile2("a.dll");
+    if ( !buffer ) {
+        printf("failed to find a.dll.\n");
+        goto end;
+    }
+
+    if (!NT_SUCCESS(LdrLoadDllMemoryExW(&hModule, nullptr, 0, buffer, 0, L"kernel64", nullptr))) {
+        printf("LdrLoadDllMemoryExW failed.\n");
+        goto end;
+    }
 
     //forward export
     pfn = (decltype(pfn))(GetProcAddress(hModule, "Socket")); //ws2_32.WSASocketW
