@@ -99,7 +99,7 @@ DWORD NTAPI MmpGetThreadCount() {
             }
 
             if (!p->NextEntryOffset)break;
-            p = PSYSTEM_PROCESS_INFORMATION(LPSTR(p) + p->NextEntryOffset);
+            p = PSYSTEM_PROCESS_INFORMATION(reinterpret_cast<LPSTR>(p) + p->NextEntryOffset);
         }
 
         RtlFreeHeap(RtlProcessHeap(), 0, spi);
@@ -151,14 +151,14 @@ DWORD MmpAllocateTlsLockHeld() {
 
     record = PMMP_TLSP_RECORD(RtlAllocateHeap(RtlProcessHeap(), 0, sizeof(MMP_TLSP_RECORD)));
     if (record) {
-        record->TlspLdrBlock = (PVOID*)NtCurrentTeb()->ThreadLocalStoragePointer;
-        record->TlspMmpBlock = (PVOID*)MmpAllocateTlsp();
+        record->TlspLdrBlock = reinterpret_cast<PVOID*>(NtCurrentTeb()->ThreadLocalStoragePointer);
+        record->TlspMmpBlock = reinterpret_cast<PVOID*>(MmpAllocateTlsp());
         record->UniqueThread = NtCurrentThreadId();
         if (record->TlspMmpBlock) {
-            record->TlspMmpBlock = ((PTLS_VECTOR)record->TlspMmpBlock)->ModuleTlsData;
+            record->TlspMmpBlock = (reinterpret_cast<PTLS_VECTOR>(record->TlspMmpBlock)->ModuleTlsData);
 
             auto size = CONTAINING_RECORD(record->TlspLdrBlock, TLS_VECTOR, ModuleTlsData)->Length;
-            if ((HANDLE)(ULONG_PTR)size != NtCurrentThreadId()) {
+            if (reinterpret_cast<HANDLE>(static_cast<ULONG_PTR>(size)) != NtCurrentThreadId()) {
                 RtlCopyMemory(
                     record->TlspMmpBlock,
                     record->TlspLdrBlock,
@@ -199,7 +199,7 @@ DWORD MmpAllocateTlsLockHeld() {
 
             RtlCopyMemory(
                 data,
-                PVOID(tls->TlsDirectory.StartAddressOfRawData),
+                reinterpret_cast<PVOID>(tls->TlsDirectory.StartAddressOfRawData),
                 len
             );
 
@@ -365,7 +365,7 @@ BOOL NTAPI PreHookNtSetInformationProcess() {
         }
 
         if (success) {
-            auto tmpTlsInformation = PPROCESS_TLS_INFORMATION(LPBYTE(ProcessTlsInformation) + ProcessTlsInformationLength);
+            auto tmpTlsInformation = PPROCESS_TLS_INFORMATION(reinterpret_cast<LPBYTE>(ProcessTlsInformation) + ProcessTlsInformationLength);
             RtlCopyMemory(
                 tmpTlsInformation,
                 ProcessTlsInformation,
@@ -805,7 +805,7 @@ NTSTATUS NTAPI MmpHandleTlsData(_In_ PLDR_DATA_TABLE_ENTRY lpModuleEntry) {
 
         RtlCopyMemory(
             current.TlsModulePointer,
-            PVOID(lpTlsDirectory->StartAddressOfRawData),
+            reinterpret_cast<PVOID>(lpTlsDirectory->StartAddressOfRawData),
             lpTlsDirectory->EndAddressOfRawData - lpTlsDirectory->StartAddressOfRawData
         );
     }

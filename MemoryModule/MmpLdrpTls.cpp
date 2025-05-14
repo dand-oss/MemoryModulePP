@@ -64,8 +64,8 @@ static NTSTATUS NTAPI RtlFindLdrpHandleTlsDataOld() {
 	}
 	}
 
-	SEARCH_CONTEXT SearchContext{ SearchContext.SearchPattern = LPBYTE(Feature),SearchContext.PatternSize = Size - 1 };
-	if (!NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(HMODULE(MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry->DllBase), ".text", &SearchContext)))
+	SEARCH_CONTEXT SearchContext{ SearchContext.SearchPattern = static_cast<LPBYTE>(Feature),SearchContext.PatternSize = Size - 1 };
+	if (!NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(static_cast<HMODULE>(MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry->DllBase), ".text", &SearchContext)))
 		return STATUS_NOT_SUPPORTED;
 
 	LdrpHandleTlsData = SearchContext.Result - OffsetOfFunctionBegin;
@@ -76,20 +76,20 @@ static NTSTATUS NTAPI RtlFindLdrpHandleTlsData10() {
 	LPVOID DllBase = MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry->DllBase;
 #ifdef _WIN64
 	// search for LdrpHandleTls string literal
-	SEARCH_CONTEXT SearchContext{ SearchContext.SearchPattern = LPBYTE("LdrpHandleTlsData\x00"), SearchContext.PatternSize = 18 };
-	if (!NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(HMODULE(DllBase), ".rdata", &SearchContext)))
+	SEARCH_CONTEXT SearchContext{ SearchContext.SearchPattern = static_cast<LPBYTE>("LdrpHandleTlsData\x00"), SearchContext.PatternSize = 18 };
+	if (!NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(static_cast<HMODULE>(DllBase), ".rdata", &SearchContext)))
 		return STATUS_NOT_SUPPORTED;
 	LPBYTE StringOffset = SearchContext.Result;
 
 	SearchContext.Result = nullptr;
 	SearchContext.PatternSize = 3;
-	SearchContext.SearchPattern = LPBYTE("\x48\x8D\x15");
+	SearchContext.SearchPattern = static_cast<LPBYTE>("\x48\x8D\x15");
 	LPBYTE ExceptionBlock = nullptr;
 
 	// Search for lea rdx,[rip+0x????]
 	// ???? is the relative offset from RIP to LdrpHandleTls string literal
-	while (NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(HMODULE(DllBase), ".text", &SearchContext))) {
-		DWORD InsOff = *(DWORD*)(SearchContext.Result + 3);
+	while (NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(static_cast<HMODULE>(DllBase), ".text", &SearchContext))) {
+		DWORD InsOff = *static_cast<DWORD*>(SearchContext.Result + 3);
 		if (StringOffset == SearchContext.Result + InsOff + 7) {
 			ExceptionBlock = SearchContext.Result;
 			break;
@@ -110,19 +110,19 @@ static NTSTATUS NTAPI RtlFindLdrpHandleTlsData10() {
 		BYTE Bytes[4];
 		DWORD Dword;
 	};
-	Converter ExceptionBlockAddress{}; // { .Dword = DWORD(ExceptionBlock - LPBYTE(DllBase)) };
-	ExceptionBlockAddress.Dword = DWORD(ExceptionBlock - LPBYTE(DllBase));
+	Converter ExceptionBlockAddress{}; // { .Dword = DWORD(ExceptionBlock - static_cast<LPBYTE>(DllBase)) };
+	ExceptionBlockAddress.Dword = static_cast<DWORD>(ExceptionBlock - static_cast<LPBYTE>(DllBase));
 
 	SearchContext.Result = nullptr;
 	SearchContext.PatternSize = 4;
 	SearchContext.SearchPattern = ExceptionBlockAddress.Bytes;
-	if (!NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(HMODULE(DllBase), ".rdata", &SearchContext)))
+	if (!NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(static_cast<HMODULE>(DllBase), ".rdata", &SearchContext)))
 		return STATUS_NOT_SUPPORTED;
 
 	// C_SCOPE_TABLE$$Begin
-	LPDWORD LdrpHandleTlsBlock = LPDWORD(*(LPDWORD)(SearchContext.Result - 8) + LPBYTE(DllBase));
+	LPDWORD LdrpHandleTlsBlock = LPDWORD(*static_cast<LPDWORD>(SearchContext.Result - 8) + static_cast<LPBYTE>(DllBase));
 	// Pad to 0x04
-	LdrpHandleTlsBlock = LPDWORD(LONGLONG(LdrpHandleTlsBlock) / 0x04 * 0x04);
+	LdrpHandleTlsBlock = static_cast<LPDWORD>(static_cast<LONGLONG>(LdrpHandleTlsBlock) / 0x04 * 0x04);
 	LPDWORD LdrpHandleTlsBlockBackup = LdrpHandleTlsBlock;
 
 	// Search back for LdrpHandleTls
@@ -141,12 +141,8 @@ static NTSTATUS NTAPI RtlFindLdrpHandleTlsData10() {
 }
 
 static NTSTATUS NTAPI RtlFindLdrpHandleTlsData() {
-	if (MmpGlobalDataPtr->NtVersions.MajorVersion >= 10) {
-		return RtlFindLdrpHandleTlsData10();
-	}
-	else {
-		return RtlFindLdrpHandleTlsDataOld();
-	}
+	return MmpGlobalDataPtr->NtVersions.MajorVersion >= 10
+	    ? RtlFindLdrpHandleTlsData10()
 }
 
 static NTSTATUS NTAPI RtlFindLdrpReleaseTlsEntry() {
@@ -171,8 +167,8 @@ static NTSTATUS NTAPI RtlFindLdrpReleaseTlsEntry() {
 		return STATUS_NOT_SUPPORTED;
 	}
 
-	SEARCH_CONTEXT SearchContext{ SearchContext.SearchPattern = LPBYTE(Feature),SearchContext.PatternSize = Size - 1 };
-	if (!NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(HMODULE(MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry->DllBase), ".text", &SearchContext)))
+	SEARCH_CONTEXT SearchContext{ SearchContext.SearchPattern = static_cast<LPBYTE>(Feature),SearchContext.PatternSize = Size - 1 };
+	if (!NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(static_cast<HMODULE>(MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry->DllBase), ".text", &SearchContext)))
 		return STATUS_NOT_SUPPORTED;
 
 	LdrpReleaseTlsEntry = SearchContext.Result - OffsetOfFunctionBegin;

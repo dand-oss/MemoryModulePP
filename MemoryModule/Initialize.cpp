@@ -17,21 +17,21 @@ PMMP_GLOBAL_DATA NTAPI GetMmpGlobalDataPtr()
 
 PRTL_RB_TREE FindLdrpModuleBaseAddressIndex() {
     PRTL_RB_TREE LdrpModuleBaseAddressIndex = nullptr;
-    PLDR_DATA_TABLE_ENTRY_WIN10 nt10 = decltype(nt10)(MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry);
+    PLDR_DATA_TABLE_ENTRY_WIN10 nt10 = reinterpret_cast<decltype(nt10)>(MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry);
     PRTL_BALANCED_NODE node = nullptr;
     if (!nt10 || !RtlIsWindowsVersionOrGreater(6, 2, 0))return nullptr;
     node = &nt10->BaseAddressIndexNode;
-    while (node->ParentValue & (~7)) node = decltype(node)(node->ParentValue & (~7));
+    while (node->ParentValue & (~7)) node = reinterpret_cast<decltype(node)>(node->ParentValue & (~7));
 
     if (!node->Red) {
         BYTE count = 0;
         PRTL_RB_TREE tmp = nullptr;
         SEARCH_CONTEXT SearchContext{};
-        SearchContext.SearchPattern = (LPBYTE)&node;
+        SearchContext.SearchPattern = reinterpret_cast<LPBYTE>(&node);
         SearchContext.PatternSize = sizeof(size_t);
-        while (NT_SUCCESS(RtlFindMemoryBlockFromModuleSection((HMODULE)nt10->DllBase, ".data", &SearchContext))) {
+        while (NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(static_cast<HMODULE>(nt10->DllBase), ".data", &SearchContext))) {
             if (count++)return nullptr;
-            tmp = (decltype(tmp))SearchContext.Result;
+            tmp = reinterpret_cast<decltype(tmp)>(SearchContext.Result);
         }
         if (count && tmp && tmp->Root && tmp->Min) {
             LdrpModuleBaseAddressIndex = tmp;
@@ -68,7 +68,7 @@ PVOID FindLdrpInvertedFunctionTable32() {
 	PIMAGE_NT_HEADERS NtdllHeaders = RtlImageNtHeader(hNtdll), ModuleHeaders = nullptr;
 	_RTL_INVERTED_FUNCTION_TABLE_ENTRY_WIN7_32 entry{};
 	LPCSTR lpSectionName = ".data";
-	SEARCH_CONTEXT SearchContext{ SearchContext.SearchPattern = (LPBYTE)&entry,SearchContext.PatternSize = sizeof(entry) };
+	SEARCH_CONTEXT SearchContext{ SearchContext.SearchPattern = reinterpret_cast<LPBYTE>(&entry),SearchContext.PatternSize = sizeof(entry) };
 	PLIST_ENTRY ListHead = &NtCurrentPeb()->Ldr->InMemoryOrderModuleList,
 		ListEntry = ListHead->Flink;
 	PLDR_DATA_TABLE_ENTRY CurEntry = nullptr;
@@ -82,18 +82,18 @@ PVOID FindLdrpInvertedFunctionTable32() {
 		CurEntry = CONTAINING_RECORD(ListEntry, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
 		ListEntry = ListEntry->Flink;
 		if (IsModuleUnloaded(CurEntry))continue;					//skip unloaded module
-		if (IsValidMemoryModuleHandle((HMEMORYMODULE)CurEntry->DllBase))continue;  //skip our memory module.
+		if (IsValidMemoryModuleHandle(static_cast<HMEMORYMODULE>(CurEntry->DllBase)))continue;  //skip our memory module.
 		if (CurEntry->DllBase == hNtdll && Offset == 0x20)continue;	//Win10 skip first entry, if the base of ntdll is smallest.
-		hModule = (HMODULE)(hModule ? min(hModule, CurEntry->DllBase) : CurEntry->DllBase);
+		hModule = static_cast<HMODULE>(hModule ? min(hModule, CurEntry->DllBase) : CurEntry->DllBase);
 	}
 	ModuleHeaders = RtlImageNtHeader(hModule);
 	if (!hModule || !ModuleHeaders || !hNtdll || !NtdllHeaders)return nullptr;
 
 	RtlCaptureImageExceptionValues(hModule, &SEHTable, &SEHCount);
-	entry = { RtlEncodeSystemPointer((PVOID)SEHTable),(DWORD)hModule,ModuleHeaders->OptionalHeader.SizeOfImage,(PVOID)SEHCount };
+	entry = { RtlEncodeSystemPointer(reinterpret_cast<PVOID>(SEHTable)),reinterpret_cast<DWORD>(hModule),ModuleHeaders->OptionalHeader.SizeOfImage,reinterpret_cast<PVOID>(SEHCount) };
 
 	while (NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(hNtdll, lpSectionName, &SearchContext))) {
-		PRTL_INVERTED_FUNCTION_TABLE_WIN7_32 tab = decltype(tab)(SearchContext.Result - Offset);
+		PRTL_INVERTED_FUNCTION_TABLE_WIN7_32 tab = reinterpret_cast<decltype(tab)>(SearchContext.Result - Offset);
 
 		//Note: Same memory layout for RTL_INVERTED_FUNCTION_TABLE_ENTRY in Windows 10 x86 and x64.
 		if (RtlIsWindowsVersionOrGreater(6, 2, 0) && tab->MaxCount == 0x200 && !tab->NextEntrySEHandlerTableEncoded) return tab;
@@ -123,7 +123,7 @@ PVOID FindLdrpInvertedFunctionTable64() {
 	_RTL_INVERTED_FUNCTION_TABLE_ENTRY_64 entry{};
 	LPCSTR lpSectionName = ".data";
 	PIMAGE_DATA_DIRECTORY dir = nullptr;
-	SEARCH_CONTEXT SearchContext{ SearchContext.SearchPattern = (LPBYTE)&entry,SearchContext.PatternSize = sizeof(entry) };
+	SEARCH_CONTEXT SearchContext{ SearchContext.SearchPattern = reinterpret_cast<LPBYTE>(&entry),SearchContext.PatternSize = sizeof(entry) };
 
 	//Windows 8
 	if (RtlVerifyVersion(6, 2, 0, RTL_VERIFY_FLAGS_MAJOR_VERSION | RTL_VERIFY_FLAGS_MINOR_VERSION)) {
@@ -145,8 +145,8 @@ PVOID FindLdrpInvertedFunctionTable64() {
 			CurEntry = CONTAINING_RECORD(ListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
 			ListEntry = ListEntry->Flink;
 			//Make sure the smallest base address is not our memory module
-			if (IsValidMemoryModuleHandle((HMEMORYMODULE)CurEntry->DllBase))continue;
-			hModule = (HMODULE)(hModule ? min(hModule, CurEntry->DllBase) : CurEntry->DllBase);
+			if (IsValidMemoryModuleHandle(static_cast<HMEMORYMODULE>(CurEntry->DllBase)))continue;
+			hModule = static_cast<HMODULE>(hModule ? min(hModule, CurEntry->DllBase) : CurEntry->DllBase);
 		}
 		ModuleHeaders = RtlImageNtHeader(hModule);
 	}
@@ -154,12 +154,12 @@ PVOID FindLdrpInvertedFunctionTable64() {
 	if (!hModule || !ModuleHeaders || !hNtdll || !NtdllHeaders)return nullptr;
 	dir = &ModuleHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXCEPTION];
 	entry = {
-		dir->Size ? decltype(entry.ExceptionDirectory)((size_t)hModule + dir->VirtualAddress) : nullptr ,
-		(PVOID)hModule, ModuleHeaders->OptionalHeader.SizeOfImage,dir->Size
+		dir->Size ? reinterpret_cast<decltype(entry.ExceptionDirectory)>(reinterpret_cast<size_t>(hModule) + dir->VirtualAddress) : nullptr ,
+		static_cast<PVOID>(hModule), ModuleHeaders->OptionalHeader.SizeOfImage,dir->Size
 	};
 
 	while (NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(hNtdll, lpSectionName, &SearchContext))) {
-		PRTL_INVERTED_FUNCTION_TABLE_64 tab = decltype(tab)(SearchContext.Result - 0x10);
+		PRTL_INVERTED_FUNCTION_TABLE_64 tab = reinterpret_cast<decltype(tab)>(SearchContext.Result - 0x10);
 		if (RtlIsWindowsVersionOrGreater(6, 2, 0) && tab->MaxCount == 0x200 && !tab->Overflow) return tab;
 		else if (tab->MaxCount == 0x200 && !tab->Epoch) return tab;
 	}
@@ -208,7 +208,7 @@ PLIST_ENTRY FindLdrpHashTable() {
 		PLIST_ENTRY hashEntry = &current->HashLinks;
 
 		if (hashEntry->Flink != hashEntry && hashEntry->Flink->Flink == hashEntry) {
-			PLIST_ENTRY table = &hashEntry->Flink[-(LONG)LdrHashEntry(current->BaseDllName)];
+			PLIST_ENTRY table = &hashEntry->Flink[-static_cast<LONG>(LdrHashEntry(current->BaseDllName))];
 
 			return IsValidLdrpHashTable(table) ? table : nullptr;
 		}
@@ -327,7 +327,7 @@ VOID InitializeWindowsVersion() {
 		MmpGlobalDataPtr->NtVersions.MajorVersion = MajorVersion;
 		MmpGlobalDataPtr->NtVersions.MinorVersion = MinorVersion;
 		MmpGlobalDataPtr->NtVersions.BuildNumber = BuildNumber;
-		MmpGlobalDataPtr->LdrDataTableEntrySize = (WORD)LdrDataTableEntrySize;
+		MmpGlobalDataPtr->LdrDataTableEntrySize = static_cast<WORD>(LdrDataTableEntrySize);
 	}
 
 }
@@ -347,7 +347,7 @@ NTSTATUS MmpAllocateGlobalData() {
 		swprintf_s(
 			buffer,
 			L"\\BaseNamedObjects\\MMPP*%p",
-			(PVOID)(~(ULONG_PTR)teb->ClientId.UniqueProcess ^ (ULONG_PTR)teb->ProcessEnvironmentBlock->ProcessHeap)
+			reinterpret_cast<PVOID>(~reinterpret_cast<ULONG_PTR>(teb->ClientId.UniqueProcess) ^ reinterpret_cast<ULONG_PTR>(teb->ProcessEnvironmentBlock->ProcessHeap))
 		);
 	}
 	else {
@@ -355,7 +355,7 @@ NTSTATUS MmpAllocateGlobalData() {
 			buffer,
 			L"\\Sessions\\%d\\BaseNamedObjects\\MMPP*%p",
 			NtCurrentPeb()->SessionId,
-			(PVOID)(~(ULONG_PTR)teb->ClientId.UniqueProcess ^ (ULONG_PTR)teb->ProcessEnvironmentBlock->ProcessHeap)
+			reinterpret_cast<PVOID>(~reinterpret_cast<ULONG_PTR>(teb->ClientId.UniqueProcess) ^ reinterpret_cast<ULONG_PTR>(teb->ProcessEnvironmentBlock->ProcessHeap))
 		);
 	}
 
@@ -377,7 +377,7 @@ NTSTATUS MmpAllocateGlobalData() {
 		status = NtMapViewOfSection(
 			hSection,
 			NtCurrentProcess(),
-			(PVOID*)&MmpGlobalDataPtr,
+			reinterpret_cast<PVOID*>(MmpGlobalDataPtr),
 			0,
 			0,
 			nullptr,
@@ -416,7 +416,7 @@ NTSTATUS MmpAllocateGlobalData() {
 				NtClose(hSection);
 
 				if (NT_SUCCESS(status)) {
-					MmpGlobalDataPtr = (PMMP_GLOBAL_DATA)((PMMP_GLOBAL_DATA)BaseAddress)->BaseAddress;
+					MmpGlobalDataPtr = reinterpret_cast<PMMP_GLOBAL_DATA>(static_cast<PMMP_GLOBAL_DATA>(BaseAddress)->BaseAddress);
 					NtUnmapViewOfSection(NtCurrentProcess(), BaseAddress);
 
 					status = STATUS_ALREADY_INITIALIZED;
@@ -466,19 +466,19 @@ NTSTATUS InitializeLockHeld() {
 			break;
 		}
 
-		MmpGlobalDataPtr->MmpBaseAddressIndex = (PMMP_BASE_ADDRESS_INDEX_DATA)((LPBYTE)MmpGlobalDataPtr + sizeof(MMP_GLOBAL_DATA));
-		MmpGlobalDataPtr->MmpInvertedFunctionTable = (PMMP_INVERTED_FUNCTION_TABLE_DATA)((LPBYTE)MmpGlobalDataPtr->MmpBaseAddressIndex + sizeof(MMP_BASE_ADDRESS_INDEX_DATA));
-		MmpGlobalDataPtr->MmpLdrEntry = (PMMP_LDR_ENTRY_DATA)((LPBYTE)MmpGlobalDataPtr->MmpInvertedFunctionTable + sizeof(MMP_INVERTED_FUNCTION_TABLE_DATA));
-		MmpGlobalDataPtr->MmpTls = (PMMP_TLS_DATA)((LPBYTE)MmpGlobalDataPtr->MmpLdrEntry + sizeof(MMP_LDR_ENTRY_DATA));
-		MmpGlobalDataPtr->MmpDotNet = (PMMP_DOT_NET_DATA)((LPBYTE)MmpGlobalDataPtr->MmpTls + sizeof(MMP_TLS_DATA));
-		MmpGlobalDataPtr->MmpFunctions = (PMMP_FUNCTIONS)((LPBYTE)MmpGlobalDataPtr->MmpDotNet + sizeof(MMP_DOT_NET_DATA));
-		MmpGlobalDataPtr->MmpIat = (PMMP_IAT_DATA)((LPBYTE)MmpGlobalDataPtr->MmpFunctions + sizeof(MMP_FUNCTIONS));
+		MmpGlobalDataPtr->MmpBaseAddressIndex = reinterpret_cast<PMMP_BASE_ADDRESS_INDEX_DATA>(reinterpret_cast<LPBYTE>(MmpGlobalDataPtr) + sizeof(MMP_GLOBAL_DATA));
+		MmpGlobalDataPtr->MmpInvertedFunctionTable = reinterpret_cast<PMMP_INVERTED_FUNCTION_TABLE_DATA>(reinterpret_cast<LPBYTE>(MmpGlobalDataPtr->MmpBaseAddressIndex) + sizeof(MMP_BASE_ADDRESS_INDEX_DATA));
+		MmpGlobalDataPtr->MmpLdrEntry = reinterpret_cast<PMMP_LDR_ENTRY_DATA>(reinterpret_cast<LPBYTE>(MmpGlobalDataPtr->MmpInvertedFunctionTable) + sizeof(MMP_INVERTED_FUNCTION_TABLE_DATA));
+		MmpGlobalDataPtr->MmpTls = reinterpret_cast<PMMP_TLS_DATA>(reinterpret_cast<PBYTE>(MmpGlobalDataPtr->MmpLdrEntry) + sizeof(MMP_LDR_ENTRY_DATA));
+		MmpGlobalDataPtr->MmpDotNet = reinterpret_cast<PMMP_DOT_NET_DATA>(reinterpret_cast<LPBYTE>(MmpGlobalDataPtr->MmpTls) + sizeof(MMP_TLS_DATA));
+		MmpGlobalDataPtr->MmpFunctions = reinterpret_cast<PMMP_FUNCTIONS>(reinterpret_cast<LPBYTE>(MmpGlobalDataPtr->MmpDotNet) + sizeof(MMP_DOT_NET_DATA));
+		MmpGlobalDataPtr->MmpIat = reinterpret_cast<PMMP_IAT_DATA>(reinterpret_cast<LPBYTE>(MmpGlobalDataPtr->MmpFunctions) + sizeof(MMP_FUNCTIONS));
 
 		PLDR_DATA_TABLE_ENTRY pNtdllEntry = RtlFindLdrTableEntryByBaseName(L"ntdll.dll");
 		MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry = pNtdllEntry;
         MmpGlobalDataPtr->MmpBaseAddressIndex->LdrpModuleBaseAddressIndex = FindLdrpModuleBaseAddressIndex();
-		MmpGlobalDataPtr->MmpBaseAddressIndex->_RtlRbInsertNodeEx = GetProcAddress((HMODULE)pNtdllEntry->DllBase, "RtlRbInsertNodeEx");
-		MmpGlobalDataPtr->MmpBaseAddressIndex->_RtlRbRemoveNode = GetProcAddress((HMODULE)pNtdllEntry->DllBase, "RtlRbRemoveNode");
+		MmpGlobalDataPtr->MmpBaseAddressIndex->_RtlRbInsertNodeEx = GetProcAddress(static_cast<HMODULE>(pNtdllEntry->DllBase), "RtlRbInsertNodeEx");
+		MmpGlobalDataPtr->MmpBaseAddressIndex->_RtlRbRemoveNode = GetProcAddress(static_cast<HMODULE>(pNtdllEntry->DllBase), "RtlRbRemoveNode");
 
 		MmpGlobalDataPtr->MmpLdrEntry->LdrpHashTable = FindLdrpHashTable();
 

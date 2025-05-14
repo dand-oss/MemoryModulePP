@@ -98,7 +98,9 @@ int test(const std::string& dll_path) {
     //exception
     exception = (_exception)GetProcAddress(hModule, "exception");
     if (exception) {
-        for (int i = 0; i < 5; ++i)exception(i);
+        for (int i = 0; i < 5; ++i) {
+            exception(i);
+        }
     }
 
     //tls
