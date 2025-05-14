@@ -393,9 +393,9 @@ BOOL NTAPI RtlIsWindowsVersionOrGreater(
 ) {
 	if (MmpGlobalDataPtr->NtVersions.MajorVersion == MajorVersion) {
 		if (MmpGlobalDataPtr->NtVersions.MinorVersion == MinorVersion) return MmpGlobalDataPtr->NtVersions.BuildNumber >= BuildNumber;
-		else return (MmpGlobalDataPtr->NtVersions.MinorVersion > MinorVersion);
+		return (MmpGlobalDataPtr->NtVersions.MinorVersion > MinorVersion);
 	}
-	else return MmpGlobalDataPtr->NtVersions.MajorVersion > MajorVersion;
+	return MmpGlobalDataPtr->NtVersions.MajorVersion > MajorVersion;
 }
 
 BOOL NTAPI RtlIsWindowsVersionInScope(
