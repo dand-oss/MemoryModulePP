@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.27)
 project(MemoryModulePP LANGUAGES CXX)
 
+###############
+# ASI default settings
+list(APPEND CMAKE_MODULE_PATH "$ENV{ASV_CMAKE}")
+include(asv_cmake_defaults)
+asv_cmake_defaults( )
+###############
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
