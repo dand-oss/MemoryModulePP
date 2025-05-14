@@ -153,4 +153,4 @@ typedef struct _MMP_GLOBAL_DATA {
 )
 
 extern PMMP_GLOBAL_DATA MmpGlobalDataPtr;
-extern "C" PMMP_GLOBAL_DATA GetMmpGlobalDataPtr() ;
+extern PMMP_GLOBAL_DATA GetMmpGlobalDataPtr() ;
