@@ -7,8 +7,6 @@
 #pragma comment(lib,"ntdll.lib")
 
 
-#pragma comment(lib, "ntdll.lib")
-
 static void DisplayStatus() {
     printf(
         "\
