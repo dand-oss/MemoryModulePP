@@ -377,7 +377,7 @@ NTSTATUS MmpAllocateGlobalData() {
 		status = NtMapViewOfSection(
 			hSection,
 			NtCurrentProcess(),
-			(PVOID*)&MmpGlobalDataPtr,
+			reinterpret_cast<PVOID*>(&MmpGlobalDataPtr),
 			0,
 			0,
 			nullptr,
