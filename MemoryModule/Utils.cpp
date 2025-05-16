@@ -142,7 +142,7 @@ BOOL NTAPI LdrpCallInitializers(PMEMORYMODULE module, DWORD dwReason) {
 				module->initialized = TRUE;
 
 				if (dwReason == DLL_PROCESS_ATTACH) {
-					if (MmpGlobalDataPtr->WindowsVersion <= WINDOWS_VERSION::winBlue) {
+					if (GetMmpGlobalDataPtr()->WindowsVersion <= WINDOWS_VERSION::winBlue) {
 						PLDR_DATA_TABLE_ENTRY_WINBLUE(module->LdrEntry)->ProcessAttachCalled = TRUE;
 					}
 					else {
@@ -169,7 +169,7 @@ SIZE_T NTAPI _RtlCompareMemory(
 	const VOID* Source1,
 	const VOID* Source2,
 	SIZE_T     Length) {
-	return reinterpret_cast<decltype(&_RtlCompareMemory)>(GetProcAddress(static_cast<HMODULE>(MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry->DllBase), "RtlCompareMemory"))(Source1, Source2, Length);
+	return reinterpret_cast<decltype(&_RtlCompareMemory)>(GetProcAddress(static_cast<HMODULE>(GetMmpGlobalDataPtr()->MmpBaseAddressIndex->NtdllLdrEntry->DllBase), "RtlCompareMemory"))(Source1, Source2, Length);
 }
 #define RtlCompareMemory _RtlCompareMemory
 #endif
@@ -380,9 +380,9 @@ BOOL NTAPI RtlVerifyVersion(
 	_In_ DWORD BuildNumber,
 	_In_ BYTE Flags
 ) {
-	if (MmpGlobalDataPtr->NtVersions.MajorVersion == MajorVersion &&
-		((Flags & RTL_VERIFY_FLAGS_MINOR_VERSION) ? MmpGlobalDataPtr->NtVersions.MinorVersion == MinorVersion : true) &&
-		((Flags & RTL_VERIFY_FLAGS_BUILD_NUMBERS) ? MmpGlobalDataPtr->NtVersions.BuildNumber == BuildNumber : true))return TRUE;
+	if (GetMmpGlobalDataPtr()->NtVersions.MajorVersion == MajorVersion &&
+		((Flags & RTL_VERIFY_FLAGS_MINOR_VERSION) ? GetMmpGlobalDataPtr()->NtVersions.MinorVersion == MinorVersion : true) &&
+		((Flags & RTL_VERIFY_FLAGS_BUILD_NUMBERS) ? GetMmpGlobalDataPtr()->NtVersions.BuildNumber == BuildNumber : true))return TRUE;
 	return FALSE;
 }
 
@@ -391,11 +391,11 @@ BOOL NTAPI RtlIsWindowsVersionOrGreater(
 	_In_ DWORD MinorVersion,
 	_In_ DWORD BuildNumber
 ) {
-	if (MmpGlobalDataPtr->NtVersions.MajorVersion == MajorVersion) {
-		if (MmpGlobalDataPtr->NtVersions.MinorVersion == MinorVersion) return MmpGlobalDataPtr->NtVersions.BuildNumber >= BuildNumber;
-		return (MmpGlobalDataPtr->NtVersions.MinorVersion > MinorVersion);
+	if (GetMmpGlobalDataPtr()->NtVersions.MajorVersion == MajorVersion) {
+		if (GetMmpGlobalDataPtr()->NtVersions.MinorVersion == MinorVersion) return GetMmpGlobalDataPtr()->NtVersions.BuildNumber >= BuildNumber;
+		return (GetMmpGlobalDataPtr()->NtVersions.MinorVersion > MinorVersion);
 	}
-	return MmpGlobalDataPtr->NtVersions.MajorVersion > MajorVersion;
+	return GetMmpGlobalDataPtr()->NtVersions.MajorVersion > MajorVersion;
 }
 
 BOOL NTAPI RtlIsWindowsVersionInScope(

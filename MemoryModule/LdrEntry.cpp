@@ -89,7 +89,7 @@ PLDR_DATA_TABLE_ENTRY NTAPI RtlAllocateDataTableEntry(_In_ PVOID BaseAddress) {
 	/* Make sure the header is valid */
 	if (NtHeader = RtlImageNtHeader(BaseAddress)) {
 		/* Allocate an entry */
-		LdrEntry = static_cast<PLDR_DATA_TABLE_ENTRY>(RtlAllocateHeap(heap, HEAP_ZERO_MEMORY, MmpGlobalDataPtr->LdrDataTableEntrySize));
+		LdrEntry = static_cast<PLDR_DATA_TABLE_ENTRY>(RtlAllocateHeap(heap, HEAP_ZERO_MEMORY, GetMmpGlobalDataPtr()->LdrDataTableEntrySize));
 	}
 
 	/* Return the entry */
@@ -102,7 +102,7 @@ BOOL NTAPI RtlInitializeLdrDataTableEntry(
 	_In_ PVOID BaseAddress,
 	_In_ UNICODE_STRING& DllBaseName,
 	_In_ UNICODE_STRING& DllFullName) {
-	RtlZeroMemory(LdrEntry, MmpGlobalDataPtr->LdrDataTableEntrySize);
+	RtlZeroMemory(LdrEntry, GetMmpGlobalDataPtr()->LdrDataTableEntrySize);
 	PIMAGE_NT_HEADERS headers = RtlImageNtHeader(BaseAddress);
 	if (!headers)return FALSE;
 	HANDLE heap = NtCurrentPeb()->ProcessHeap;
@@ -119,7 +119,7 @@ BOOL NTAPI RtlInitializeLdrDataTableEntry(
 		}
 	}
 
-	switch (MmpGlobalDataPtr->WindowsVersion) {
+	switch (GetMmpGlobalDataPtr()->WindowsVersion) {
 	case WINDOWS_VERSION::win11: {
 		auto entry = reinterpret_cast<PLDR_DATA_TABLE_ENTRY_WIN11>(LdrEntry);
 		entry->CheckSum = headers->OptionalHeader.CheckSum;
@@ -161,15 +161,15 @@ BOOL NTAPI RtlInitializeLdrDataTableEntry(
 	}
 
 	case WINDOWS_VERSION::win7: {
-		if (MmpGlobalDataPtr->LdrDataTableEntrySize == sizeof(LDR_DATA_TABLE_ENTRY_WIN7)) {
+		if (GetMmpGlobalDataPtr()->LdrDataTableEntrySize == sizeof(LDR_DATA_TABLE_ENTRY_WIN7)) {
 			auto entry = reinterpret_cast<PLDR_DATA_TABLE_ENTRY_WIN7>(LdrEntry);
 			entry->OriginalBase = headers->OptionalHeader.ImageBase;
 			NtQuerySystemTime(&entry->LoadTime);
 		}
 	}
 	case WINDOWS_VERSION::vista: {
-		if (MmpGlobalDataPtr->LdrDataTableEntrySize == sizeof(LDR_DATA_TABLE_ENTRY_VISTA) ||
-			MmpGlobalDataPtr->LdrDataTableEntrySize == sizeof(LDR_DATA_TABLE_ENTRY_WIN7)) {
+		if (GetMmpGlobalDataPtr()->LdrDataTableEntrySize == sizeof(LDR_DATA_TABLE_ENTRY_VISTA) ||
+			GetMmpGlobalDataPtr()->LdrDataTableEntrySize == sizeof(LDR_DATA_TABLE_ENTRY_WIN7)) {
 			auto entry = reinterpret_cast<PLDR_DATA_TABLE_ENTRY_VISTA>(LdrEntry);
 			InitializeListHead(&entry->ForwarderLinks);
 			InitializeListHead(&entry->StaticLinks);
@@ -198,7 +198,7 @@ BOOL NTAPI RtlInitializeLdrDataTableEntry(
 
 BOOL NTAPI RtlFreeLdrDataTableEntry(_In_ PLDR_DATA_TABLE_ENTRY LdrEntry) {
 	HANDLE heap = NtCurrentPeb()->ProcessHeap;
-	switch (MmpGlobalDataPtr->WindowsVersion) {
+	switch (GetMmpGlobalDataPtr()->WindowsVersion) {
 	case WINDOWS_VERSION::win11:
 	case WINDOWS_VERSION::win10:
 	case WINDOWS_VERSION::win10_1:
@@ -212,8 +212,8 @@ BOOL NTAPI RtlFreeLdrDataTableEntry(_In_ PLDR_DATA_TABLE_ENTRY LdrEntry) {
 	}
 	case WINDOWS_VERSION::win7:
 	case WINDOWS_VERSION::vista: {
-		if (MmpGlobalDataPtr->LdrDataTableEntrySize == sizeof(LDR_DATA_TABLE_ENTRY_VISTA) ||
-			MmpGlobalDataPtr->LdrDataTableEntrySize == sizeof(LDR_DATA_TABLE_ENTRY_WIN7)) {
+		if (GetMmpGlobalDataPtr()->LdrDataTableEntrySize == sizeof(LDR_DATA_TABLE_ENTRY_VISTA) ||
+			GetMmpGlobalDataPtr()->LdrDataTableEntrySize == sizeof(LDR_DATA_TABLE_ENTRY_WIN7)) {
 			PLDR_DATA_TABLE_ENTRY_VISTA entry = reinterpret_cast<decltype(entry)>(LdrEntry);
 			PLIST_ENTRY head = &entry->ForwarderLinks, next = head->Flink;
 			while (head != next) {
@@ -271,7 +271,7 @@ NTSTATUS NTAPI RtlGetReferenceCount(
 
 VOID NTAPI RtlInsertMemoryTableEntry(_In_ PLDR_DATA_TABLE_ENTRY LdrEntry) {
 	PPEB_LDR_DATA PebData = NtCurrentPeb()->Ldr;
-	PLIST_ENTRY LdrpHashTable = MmpGlobalDataPtr->MmpLdrEntry->LdrpHashTable;
+	PLIST_ENTRY LdrpHashTable = GetMmpGlobalDataPtr()->MmpLdrEntry->LdrpHashTable;
 	ULONG i;
 
 	/* Insert into hash table */
@@ -314,7 +314,7 @@ PLDR_DATA_TABLE_ENTRY NTAPI RtlFindLdrTableEntryByBaseName(_In_z_ PCWSTR BaseNam
 ULONG NTAPI LdrHashEntry(_In_ UNICODE_STRING& DllBaseName, _In_ BOOL ToIndex) {
 	ULONG result = 0;
 
-	switch (MmpGlobalDataPtr->WindowsVersion) {
+	switch (GetMmpGlobalDataPtr()->WindowsVersion) {
 	case WINDOWS_VERSION::xp:
 		result = RtlUpcaseUnicodeChar(DllBaseName.Buffer[0]) - 'A';
 		break;

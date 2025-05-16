@@ -152,5 +152,4 @@ typedef struct _MMP_GLOBAL_DATA {
 	sizeof(PMMP_IAT_DATA)\
 )
 
-extern PMMP_GLOBAL_DATA MmpGlobalDataPtr;
 PMMP_GLOBAL_DATA NTAPI GetMmpGlobalDataPtr() ;

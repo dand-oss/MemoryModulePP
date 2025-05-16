@@ -199,7 +199,7 @@ NTSTATUS MemoryLoadLibrary(
 	//
 	// Allocate memory for image headers
 	//
-	size_t alignedHeadersSize = static_cast<DWORD>(AlignValueUp(old_header->OptionalHeader.SizeOfHeaders + sizeof(MEMORYMODULE), MmpGlobalDataPtr->SystemInfo.dwPageSize));
+	size_t alignedHeadersSize = static_cast<DWORD>(AlignValueUp(old_header->OptionalHeader.SizeOfHeaders + sizeof(MEMORYMODULE), GetMmpGlobalDataPtr()->SystemInfo.dwPageSize));
 	if (!VirtualAlloc(base, alignedHeadersSize, MEM_COMMIT, PAGE_READWRITE)) {
 		VirtualFree(base, 0, MEM_RELEASE);
 		status = STATUS_NO_MEMORY;

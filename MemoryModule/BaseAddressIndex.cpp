@@ -7,21 +7,21 @@ VOID NTAPI RtlRbInsertNodeEx(
 	_Out_ PRTL_BALANCED_NODE Node) {
 	RtlZeroMemory(Node, sizeof(*Node));
 
-	if (!MmpGlobalDataPtr->MmpBaseAddressIndex->_RtlRbInsertNodeEx)return;
-	return decltype(&RtlRbInsertNodeEx)(MmpGlobalDataPtr->MmpBaseAddressIndex->_RtlRbInsertNodeEx)(Tree, Parent, Right, Node);
+	if (!GetMmpGlobalDataPtr()->MmpBaseAddressIndex->_RtlRbInsertNodeEx)return;
+	return decltype(&RtlRbInsertNodeEx)(GetMmpGlobalDataPtr()->MmpBaseAddressIndex->_RtlRbInsertNodeEx)(Tree, Parent, Right, Node);
 }
 
 VOID NTAPI RtlRbRemoveNode(
 	_In_ PRTL_RB_TREE Tree,
 	_In_ PRTL_BALANCED_NODE Node) {
-	if (!MmpGlobalDataPtr->MmpBaseAddressIndex->_RtlRbRemoveNode)return;
-	return decltype(&RtlRbRemoveNode)(MmpGlobalDataPtr->MmpBaseAddressIndex->_RtlRbRemoveNode)(Tree, Node);
+	if (!GetMmpGlobalDataPtr()->MmpBaseAddressIndex->_RtlRbRemoveNode)return;
+	return decltype(&RtlRbRemoveNode)(GetMmpGlobalDataPtr()->MmpBaseAddressIndex->_RtlRbRemoveNode)(Tree, Node);
 }
 
 NTSTATUS NTAPI RtlInsertModuleBaseAddressIndexNode(
 	_In_ PLDR_DATA_TABLE_ENTRY DataTableEntry,
 	_In_ PVOID BaseAddress) {
-	auto LdrpModuleBaseAddressIndex = MmpGlobalDataPtr->MmpBaseAddressIndex->LdrpModuleBaseAddressIndex;
+	auto LdrpModuleBaseAddressIndex = GetMmpGlobalDataPtr()->MmpBaseAddressIndex->LdrpModuleBaseAddressIndex;
 	if (!LdrpModuleBaseAddressIndex)return STATUS_UNSUCCESSFUL;
 
 	PLDR_DATA_TABLE_ENTRY_WIN8 LdrNode = CONTAINING_RECORD(LdrpModuleBaseAddressIndex->Root, LDR_DATA_TABLE_ENTRY_WIN8, BaseAddressIndexNode);
@@ -53,6 +53,6 @@ NTSTATUS NTAPI RtlInsertModuleBaseAddressIndexNode(
 }
 
 NTSTATUS NTAPI RtlRemoveModuleBaseAddressIndexNode(_In_ PLDR_DATA_TABLE_ENTRY DataTableEntry) {
-	RtlRbRemoveNode(MmpGlobalDataPtr->MmpBaseAddressIndex->LdrpModuleBaseAddressIndex, &PLDR_DATA_TABLE_ENTRY_WIN8(DataTableEntry)->BaseAddressIndexNode);
+	RtlRbRemoveNode(GetMmpGlobalDataPtr()->MmpBaseAddressIndex->LdrpModuleBaseAddressIndex, &PLDR_DATA_TABLE_ENTRY_WIN8(DataTableEntry)->BaseAddressIndexNode);
 	return STATUS_SUCCESS;
 }

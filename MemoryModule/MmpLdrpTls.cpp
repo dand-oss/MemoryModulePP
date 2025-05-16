@@ -12,9 +12,9 @@ static NTSTATUS NTAPI RtlFindLdrpHandleTlsDataOld() {
 	BYTE Size = 0;
 	WORD OffsetOfFunctionBegin = 0;
 
-	switch (MmpGlobalDataPtr->NtVersions.MajorVersion) {
+	switch (GetMmpGlobalDataPtr()->NtVersions.MajorVersion) {
 	case 6: {
-		switch (MmpGlobalDataPtr->NtVersions.MinorVersion) {
+		switch (GetMmpGlobalDataPtr()->NtVersions.MinorVersion) {
 			//8.1
 		case 3: {
 #ifdef _WIN64
@@ -65,7 +65,7 @@ static NTSTATUS NTAPI RtlFindLdrpHandleTlsDataOld() {
 	}
 
 	SEARCH_CONTEXT SearchContext{ SearchContext.SearchPattern = static_cast<LPBYTE>(Feature),SearchContext.PatternSize = Size - 1 };
-	if (!NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(static_cast<HMODULE>(MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry->DllBase), ".text", &SearchContext)))
+	if (!NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(static_cast<HMODULE>(GetMmpGlobalDataPtr()->MmpBaseAddressIndex->NtdllLdrEntry->DllBase), ".text", &SearchContext)))
 		return STATUS_NOT_SUPPORTED;
 
 	LdrpHandleTlsData = SearchContext.Result - OffsetOfFunctionBegin;
@@ -73,7 +73,7 @@ static NTSTATUS NTAPI RtlFindLdrpHandleTlsDataOld() {
 }
 
 static NTSTATUS NTAPI RtlFindLdrpHandleTlsData10() {
-	LPVOID DllBase = MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry->DllBase;
+	LPVOID DllBase = GetMmpGlobalDataPtr()->MmpBaseAddressIndex->NtdllLdrEntry->DllBase;
 #ifdef _WIN64
 	// search for LdrpHandleTls string literal
 	SEARCH_CONTEXT SearchContext{ SearchContext.SearchPattern = static_cast<LPBYTE>("LdrpHandleTlsData\x00"), SearchContext.PatternSize = 18 };
@@ -141,7 +141,7 @@ static NTSTATUS NTAPI RtlFindLdrpHandleTlsData10() {
 }
 
 static NTSTATUS NTAPI RtlFindLdrpHandleTlsData() {
-	return MmpGlobalDataPtr->NtVersions.MajorVersion >= 10
+	return GetMmpGlobalDataPtr()->NtVersions.MajorVersion >= 10
 	    ? RtlFindLdrpHandleTlsData10()
 }
 
@@ -151,9 +151,9 @@ static NTSTATUS NTAPI RtlFindLdrpReleaseTlsEntry() {
 	BYTE Size = 0;
 	WORD OffsetOfFunctionBegin = 0;
 
-	switch (MmpGlobalDataPtr->NtVersions.MajorVersion) {
+	switch (GetMmpGlobalDataPtr()->NtVersions.MajorVersion) {
 	case 10: {
-		if (MmpGlobalDataPtr->NtVersions.MinorVersion) return STATUS_NOT_SUPPORTED;
+		if (GetMmpGlobalDataPtr()->NtVersions.MinorVersion) return STATUS_NOT_SUPPORTED;
 
 #ifdef _WIN64
 		Feature = "\x48\x89\x5c\x24\x08\x57\x48\x83\xec\x20\x48\x8b\xfa\x48\x8b\xd9\x48\x85\xd2\x75\x0c";
@@ -168,7 +168,7 @@ static NTSTATUS NTAPI RtlFindLdrpReleaseTlsEntry() {
 	}
 
 	SEARCH_CONTEXT SearchContext{ SearchContext.SearchPattern = static_cast<LPBYTE>(Feature),SearchContext.PatternSize = Size - 1 };
-	if (!NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(static_cast<HMODULE>(MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry->DllBase), ".text", &SearchContext)))
+	if (!NT_SUCCESS(RtlFindMemoryBlockFromModuleSection(static_cast<HMODULE>(GetMmpGlobalDataPtr()->MmpBaseAddressIndex->NtdllLdrEntry->DllBase), ".text", &SearchContext)))
 		return STATUS_NOT_SUPPORTED;
 
 	LdrpReleaseTlsEntry = SearchContext.Result - OffsetOfFunctionBegin;
@@ -182,7 +182,7 @@ BOOL NTAPI MmpTlsInitialize() {
 		LdrpHandleTlsData = nullptr;
 		LdrpReleaseTlsEntry = nullptr;
 
-		MmpGlobalDataPtr->MmpFeatures &= ~MEMORY_FEATURE_LDRP_HANDLE_TLS_DATA;
+		GetMmpGlobalDataPtr()->MmpFeatures &= ~MEMORY_FEATURE_LDRP_HANDLE_TLS_DATA;
 		return FALSE;
 	}
 

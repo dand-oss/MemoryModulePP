@@ -14,10 +14,10 @@ HMODULE MmpLoadLibraryA(
 	HMODULE hModule = nullptr;
 	PMM_IAT_RESOLVER resolver = nullptr;
 
-	EnterCriticalSection(&MmpGlobalDataPtr->MmpIat->MmpIatResolverListLock);
+	EnterCriticalSection(&GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverListLock);
 
-	PLIST_ENTRY lpResolver = MmpGlobalDataPtr->MmpIat->MmpIatResolverList.Flink;
-	while (lpResolver != &MmpGlobalDataPtr->MmpIat->MmpIatResolverList) {
+	PLIST_ENTRY lpResolver = GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverList.Flink;
+	while (lpResolver != &GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverList) {
 		PMM_IAT_RESOLVER entry = CONTAINING_RECORD(lpResolver, MM_IAT_RESOLVER, MM_IAT_RESOLVER::InMmpIatResolverList);
 
 		hModule = entry->LoadLibraryProv(lpModuleName);
@@ -30,7 +30,7 @@ HMODULE MmpLoadLibraryA(
 		lpResolver = lpResolver->Flink;
 	}
 
-	LeaveCriticalSection(&MmpGlobalDataPtr->MmpIat->MmpIatResolverListLock);
+	LeaveCriticalSection(&GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverListLock);
 
 	*lpModuleResolver = resolver;
 	return hModule;
@@ -38,7 +38,7 @@ HMODULE MmpLoadLibraryA(
 
 VOID MemoryFreeImportTable(_In_ PMEMORYMODULE hMemoryModule) {
 
-	EnterCriticalSection(&MmpGlobalDataPtr->MmpIat->MmpIatResolverListLock);
+	EnterCriticalSection(&GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverListLock);
 
 	PMMP_IAT_HANDLE list = static_cast<PMMP_IAT_HANDLE>(hMemoryModule->hModulesList);
 	for (DWORD i = 0; i < hMemoryModule->dwModulesCount; ++i) {
@@ -47,7 +47,7 @@ VOID MemoryFreeImportTable(_In_ PMEMORYMODULE hMemoryModule) {
 		--entry.lpResolver->ReferenceCount;
 	}
 
-	LeaveCriticalSection(&MmpGlobalDataPtr->MmpIat->MmpIatResolverListLock);
+	LeaveCriticalSection(&GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverListLock);
 
 
 	RtlFreeHeap(NtCurrentPeb()->ProcessHeap, 0, hMemoryModule->hModulesList);
@@ -140,14 +140,14 @@ HANDLE WINAPI MmRegisterImportTableResolver(
 	PMM_IAT_RESOLVER resolver = static_cast<PMM_IAT_RESOLVER>(RtlAllocateHeap(heap, 0, sizeof(MM_IAT_RESOLVER)));
 
 	if (resolver) {
-		EnterCriticalSection(&MmpGlobalDataPtr->MmpIat->MmpIatResolverListLock);
+		EnterCriticalSection(&GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverListLock);
 
 		resolver->ReferenceCount = 1;
 		resolver->LoadLibraryProv = LoadLibraryProv;
 		resolver->FreeLibraryProv = FreeLibraryProv;
-		InsertTailList(&MmpGlobalDataPtr->MmpIat->MmpIatResolverList, &resolver->InMmpIatResolverList);
+		InsertTailList(&GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverList, &resolver->InMmpIatResolverList);
 
-		LeaveCriticalSection(&MmpGlobalDataPtr->MmpIat->MmpIatResolverListLock);
+		LeaveCriticalSection(&GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverListLock);
 	}
 
 	return resolver;
@@ -158,21 +158,21 @@ BOOL WINAPI MmRemoveImportTableResolver(_In_ HANDLE hMmIatResolver) {
 
 	HANDLE heap = RtlProcessHeap();
 
-	if (hMmIatResolver == &MmpGlobalDataPtr->MmpIat->MmpIatResolverHead) {
+	if (hMmIatResolver == &GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverHead) {
 		return FALSE;
 	}
 
 	PMM_IAT_RESOLVER resolver = CONTAINING_RECORD(hMmIatResolver, MM_IAT_RESOLVER, MM_IAT_RESOLVER::InMmpIatResolverList);
 
-	EnterCriticalSection(&MmpGlobalDataPtr->MmpIat->MmpIatResolverListLock);
+	EnterCriticalSection(&GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverListLock);
 
 	if (resolver->ReferenceCount > 1) {
-		LeaveCriticalSection(&MmpGlobalDataPtr->MmpIat->MmpIatResolverListLock);
+		LeaveCriticalSection(&GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverListLock);
 		return FALSE;
 	}
 
 	RemoveHeadList(&resolver->InMmpIatResolverList);
-	LeaveCriticalSection(&MmpGlobalDataPtr->MmpIat->MmpIatResolverListLock);
+	LeaveCriticalSection(&GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverListLock);
 
 	return RtlFreeHeap(heap, 0, hMmIatResolver);
 }

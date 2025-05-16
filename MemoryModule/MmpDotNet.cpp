@@ -59,17 +59,17 @@ VOID MmpInsertHandleEntry(
     entry->value = value;
     entry->bImageMapping = bImageMapping;
 
-    EnterCriticalSection(&MmpGlobalDataPtr->MmpDotNet->MmpFakeHandleListLock);
-    InsertTailList(&MmpGlobalDataPtr->MmpDotNet->MmpFakeHandleListHead, &entry->InMmpFakeHandleList);
-    LeaveCriticalSection(&MmpGlobalDataPtr->MmpDotNet->MmpFakeHandleListLock);
+    EnterCriticalSection(&GetMmpGlobalDataPtr()->MmpDotNet->MmpFakeHandleListLock);
+    InsertTailList(&GetMmpGlobalDataPtr()->MmpDotNet->MmpFakeHandleListHead, &entry->InMmpFakeHandleList);
+    LeaveCriticalSection(&GetMmpGlobalDataPtr()->MmpDotNet->MmpFakeHandleListLock);
 }
 
 PMMP_FAKE_HANDLE_LIST_ENTRY MmpFindHandleEntry(HANDLE hObject) {
 
     PMMP_FAKE_HANDLE_LIST_ENTRY result = nullptr;
-    EnterCriticalSection(&MmpGlobalDataPtr->MmpDotNet->MmpFakeHandleListLock);
+    EnterCriticalSection(&GetMmpGlobalDataPtr()->MmpDotNet->MmpFakeHandleListLock);
 
-    for (auto entry = MmpGlobalDataPtr->MmpDotNet->MmpFakeHandleListHead.Flink; entry != &MmpGlobalDataPtr->MmpDotNet->MmpFakeHandleListHead; entry = entry->Flink) {
+    for (auto entry = GetMmpGlobalDataPtr()->MmpDotNet->MmpFakeHandleListHead.Flink; entry != &GetMmpGlobalDataPtr()->MmpDotNet->MmpFakeHandleListHead; entry = entry->Flink) {
         auto CurEntry = CONTAINING_RECORD(entry, MMP_FAKE_HANDLE_LIST_ENTRY, MMP_FAKE_HANDLE_LIST_ENTRY::InMmpFakeHandleList);
 
         if (CurEntry->hObject == hObject) {
@@ -79,15 +79,15 @@ PMMP_FAKE_HANDLE_LIST_ENTRY MmpFindHandleEntry(HANDLE hObject) {
 
     }
 
-    LeaveCriticalSection(&MmpGlobalDataPtr->MmpDotNet->MmpFakeHandleListLock);
+    LeaveCriticalSection(&GetMmpGlobalDataPtr()->MmpDotNet->MmpFakeHandleListLock);
     return result;
 }
 
 VOID MmpFreeHandleEntry(PMMP_FAKE_HANDLE_LIST_ENTRY lpHandleEntry) {
-    EnterCriticalSection(&MmpGlobalDataPtr->MmpDotNet->MmpFakeHandleListLock);
+    EnterCriticalSection(&GetMmpGlobalDataPtr()->MmpDotNet->MmpFakeHandleListLock);
     RemoveEntryList(&lpHandleEntry->InMmpFakeHandleList);
     RtlFreeHeap(RtlProcessHeap(), 0, lpHandleEntry);
-    LeaveCriticalSection(&MmpGlobalDataPtr->MmpDotNet->MmpFakeHandleListLock);
+    LeaveCriticalSection(&GetMmpGlobalDataPtr()->MmpDotNet->MmpFakeHandleListLock);
 }
 
 HANDLE WINAPI HookCreateFileW(
@@ -107,7 +107,7 @@ HANDLE WINAPI HookCreateFileW(
         return hEvent;
     }
 
-    return MmpGlobalDataPtr->MmpDotNet->Hooks.OriginCreateFileW(
+    return GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginCreateFileW(
         lpFileName,
         dwDesiredAccess,
         dwShareMode,
@@ -128,13 +128,13 @@ BOOL WINAPI HookGetFileInformationByHandle(
         auto entry = (PLDR_DATA_TABLE_ENTRY)iter->value;
         auto module = MapMemoryModuleHandle(static_cast<HMEMORYMODULE>(entry->DllBase));
 
-        lpFileInformation->ftCreationTime = lpFileInformation->ftLastAccessTime = lpFileInformation->ftLastWriteTime = MmpGlobalDataPtr->MmpDotNet->AssemblyTimes;
+        lpFileInformation->ftCreationTime = lpFileInformation->ftLastAccessTime = lpFileInformation->ftLastWriteTime = GetMmpGlobalDataPtr()->MmpDotNet->AssemblyTimes;
         lpFileInformation->nFileSizeLow = module->dwImageFileSize;
 
         return TRUE;
     }
     else {
-        return MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileInformationByHandle(
+        return GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileInformationByHandle(
             hFile,
             lpFileInformation
         );
@@ -157,7 +157,7 @@ BOOL WINAPI HookGetFileAttributesExW(
             LPWIN32_FILE_ATTRIBUTE_DATA data = static_cast<LPWIN32_FILE_ATTRIBUTE_DATA>(lpFileInformation);
             auto module = MapMemoryModuleHandle(static_cast<HMEMORYMODULE>(entry->DllBase));
 
-            data->ftCreationTime = data->ftLastAccessTime = data->ftLastWriteTime = MmpGlobalDataPtr->MmpDotNet->AssemblyTimes;
+            data->ftCreationTime = data->ftLastAccessTime = data->ftLastWriteTime = GetMmpGlobalDataPtr()->MmpDotNet->AssemblyTimes;
             data->nFileSizeLow = module->dwImageFileSize;
             return TRUE;
         }
@@ -166,7 +166,7 @@ BOOL WINAPI HookGetFileAttributesExW(
         }
     }
 
-    return MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileAttributesExW(
+    return GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileAttributesExW(
         lpFileName,
         fInfoLevelId,
         lpFileInformation
@@ -187,7 +187,7 @@ DWORD WINAPI HookGetFileSize(
         return module->dwImageFileSize;
     }
     else {
-        return MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileSize(
+        return GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileSize(
             hFile,
             lpFileSizeHigh
         );
@@ -208,7 +208,7 @@ BOOL WINAPI HookGetFileSizeEx(
         return TRUE;
     }
     else {
-        return MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileSizeEx(
+        return GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileSizeEx(
             hFile,
             lpFileSize
         );
@@ -232,7 +232,7 @@ HANDLE WINAPI HookCreateFileMappingW(
         return hEvent;
     }
 
-    return MmpGlobalDataPtr->MmpDotNet->Hooks.OriginCreateFileMappingW(
+    return GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginCreateFileMappingW(
         hFile,
         lpFileMappingAttributes,
         flProtect,
@@ -268,7 +268,7 @@ LPVOID WINAPI HookMapViewOfFileEx(
         return hModule;
     }
 
-    return MmpGlobalDataPtr->MmpDotNet->Hooks.OriginMapViewOfFileEx(
+    return GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginMapViewOfFileEx(
         hFileMappingObject,
         dwDesiredAccess,
         dwFileOffsetHigh,
@@ -304,14 +304,14 @@ BOOL WINAPI HookUnmapViewOfFile(_In_ LPCVOID lpBaseAddress) {
         return TRUE;
     }
 
-    return MmpGlobalDataPtr->MmpDotNet->Hooks.OriginUnmapViewOfFile(lpBaseAddress);
+    return GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginUnmapViewOfFile(lpBaseAddress);
 }
 
 BOOL WINAPI HookCloseHandle(_In_ _Post_ptr_invalid_ HANDLE hObject) {
     auto iter = MmpFindHandleEntry(hObject);
     if (iter)MmpFreeHandleEntry(iter);
 
-    return MmpGlobalDataPtr->MmpDotNet->Hooks.OriginCloseHandle(hObject);
+    return GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginCloseHandle(hObject);
 }
 
 HRESULT WINAPI HookGetFileVersion(
@@ -354,7 +354,7 @@ HRESULT WINAPI HookGetFileVersion(
 
     }
 
-    return MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileVersion1(
+    return GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileVersion1(
         szFilename,
         szBuffer,
         cchBuffer,
@@ -366,74 +366,74 @@ BOOL WINAPI MmpPreInitializeHooksForDotNet() {
 
     EnterCriticalSection(NtCurrentPeb()->FastPebLock);
 
-    if (!MmpGlobalDataPtr->MmpDotNet->PreHooked) {
+    if (!GetMmpGlobalDataPtr()->MmpDotNet->PreHooked) {
         HMODULE hModule = LoadLibraryW(L"mscoree.dll");
         if (hModule) {
-            MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileVersion2 = (GetFileVersion_T)GetProcAddress(hModule, "GetFileVersion");
-            if (MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileVersion2) {
+            GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileVersion2 = (GetFileVersion_T)GetProcAddress(hModule, "GetFileVersion");
+            if (GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileVersion2) {
 
-                GetSystemTimeAsFileTime(&MmpGlobalDataPtr->MmpDotNet->AssemblyTimes);
+                GetSystemTimeAsFileTime(&GetMmpGlobalDataPtr()->MmpDotNet->AssemblyTimes);
 
-                InitializeCriticalSection(&MmpGlobalDataPtr->MmpDotNet->MmpFakeHandleListLock);
-                InitializeListHead(&MmpGlobalDataPtr->MmpDotNet->MmpFakeHandleListHead);
+                InitializeCriticalSection(&GetMmpGlobalDataPtr()->MmpDotNet->MmpFakeHandleListLock);
+                InitializeListHead(&GetMmpGlobalDataPtr()->MmpDotNet->MmpFakeHandleListHead);
 
-                MmpGlobalDataPtr->MmpDotNet->Hooks.OriginCreateFileW = CreateFileW;
-                MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileInformationByHandle = GetFileInformationByHandle;
-                MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileAttributesExW = GetFileAttributesExW;
-                MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileSize = GetFileSize;
-                MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileSizeEx = GetFileSizeEx;
-                MmpGlobalDataPtr->MmpDotNet->Hooks.OriginCreateFileMappingW = CreateFileMappingW;
-                MmpGlobalDataPtr->MmpDotNet->Hooks.OriginMapViewOfFileEx = MapViewOfFileEx;
-                MmpGlobalDataPtr->MmpDotNet->Hooks.OriginMapViewOfFile = MapViewOfFile;
-                MmpGlobalDataPtr->MmpDotNet->Hooks.OriginUnmapViewOfFile = UnmapViewOfFile;
-                MmpGlobalDataPtr->MmpDotNet->Hooks.OriginCloseHandle = CloseHandle;
+                GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginCreateFileW = CreateFileW;
+                GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileInformationByHandle = GetFileInformationByHandle;
+                GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileAttributesExW = GetFileAttributesExW;
+                GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileSize = GetFileSize;
+                GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileSizeEx = GetFileSizeEx;
+                GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginCreateFileMappingW = CreateFileMappingW;
+                GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginMapViewOfFileEx = MapViewOfFileEx;
+                GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginMapViewOfFile = MapViewOfFile;
+                GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginUnmapViewOfFile = UnmapViewOfFile;
+                GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginCloseHandle = CloseHandle;
 
                 DetourTransactionBegin();
                 DetourUpdateThread(NtCurrentThread());
 
-                DetourAttach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginCreateFileW, HookCreateFileW);
-                DetourAttach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileInformationByHandle, HookGetFileInformationByHandle);
-                DetourAttach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileAttributesExW, HookGetFileAttributesExW);
-                DetourAttach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileSize, HookGetFileSize);
-                DetourAttach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileSizeEx, HookGetFileSizeEx);
-                DetourAttach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginCreateFileMappingW, HookCreateFileMappingW);
-                DetourAttach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginMapViewOfFileEx, HookMapViewOfFileEx);
-                DetourAttach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginMapViewOfFile, HookMapViewOfFile);
-                DetourAttach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginUnmapViewOfFile, HookUnmapViewOfFile);
-                DetourAttach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginCloseHandle, HookCloseHandle);
-                DetourAttach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileVersion2, HookGetFileVersion);
+                DetourAttach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginCreateFileW, HookCreateFileW);
+                DetourAttach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileInformationByHandle, HookGetFileInformationByHandle);
+                DetourAttach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileAttributesExW, HookGetFileAttributesExW);
+                DetourAttach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileSize, HookGetFileSize);
+                DetourAttach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileSizeEx, HookGetFileSizeEx);
+                DetourAttach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginCreateFileMappingW, HookCreateFileMappingW);
+                DetourAttach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginMapViewOfFileEx, HookMapViewOfFileEx);
+                DetourAttach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginMapViewOfFile, HookMapViewOfFile);
+                DetourAttach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginUnmapViewOfFile, HookUnmapViewOfFile);
+                DetourAttach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginCloseHandle, HookCloseHandle);
+                DetourAttach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileVersion2, HookGetFileVersion);
 
                 DetourTransactionCommit();
 
-                MmpGlobalDataPtr->MmpDotNet->PreHooked = TRUE;
+                GetMmpGlobalDataPtr()->MmpDotNet->PreHooked = TRUE;
             }
         }
     }
 
     LeaveCriticalSection(NtCurrentPeb()->FastPebLock);
 
-    return MmpGlobalDataPtr->MmpDotNet->PreHooked;
+    return GetMmpGlobalDataPtr()->MmpDotNet->PreHooked;
 }
 
 BOOL WINAPI MmpInitializeHooksForDotNet() {
     HMODULE hModule = GetModuleHandleW(L"mscoreei.dll");
     if (hModule) {
-        MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileVersion1 = (GetFileVersion_T)GetProcAddress(hModule, "GetFileVersion");
-        if (MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileVersion1) {
+        GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileVersion1 = (GetFileVersion_T)GetProcAddress(hModule, "GetFileVersion");
+        if (GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileVersion1) {
 
             EnterCriticalSection(NtCurrentPeb()->FastPebLock);
 
-            if (!MmpGlobalDataPtr->MmpDotNet->PreHooked) {
+            if (!GetMmpGlobalDataPtr()->MmpDotNet->PreHooked) {
                 LeaveCriticalSection(NtCurrentPeb()->FastPebLock);
                 return FALSE;
             }
 
-            if (!MmpGlobalDataPtr->MmpDotNet->Initialized) {
+            if (!GetMmpGlobalDataPtr()->MmpDotNet->Initialized) {
                 DetourTransactionBegin();
                 DetourUpdateThread(NtCurrentThread());
-                DetourAttach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileVersion1, HookGetFileVersion);
+                DetourAttach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileVersion1, HookGetFileVersion);
                 DetourTransactionCommit();
-                MmpGlobalDataPtr->MmpDotNet->Initialized = TRUE;
+                GetMmpGlobalDataPtr()->MmpDotNet->Initialized = TRUE;
             }
 
             LeaveCriticalSection(NtCurrentPeb()->FastPebLock);
@@ -447,33 +447,33 @@ BOOL WINAPI MmpInitializeHooksForDotNet() {
 VOID WINAPI MmpCleanupDotNetHooks() {
     EnterCriticalSection(NtCurrentPeb()->FastPebLock);
 
-    if (MmpGlobalDataPtr->MmpDotNet->PreHooked) {
+    if (GetMmpGlobalDataPtr()->MmpDotNet->PreHooked) {
         DetourTransactionBegin();
         DetourUpdateThread(NtCurrentThread());
 
-        DetourDetach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginCreateFileW, HookCreateFileW);
-        DetourDetach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileInformationByHandle, HookGetFileInformationByHandle);
-        DetourDetach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileAttributesExW, HookGetFileAttributesExW);
-        DetourDetach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileSize, HookGetFileSize);
-        DetourDetach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileSizeEx, HookGetFileSizeEx);
-        DetourDetach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginCreateFileMappingW, HookCreateFileMappingW);
-        DetourDetach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginMapViewOfFileEx, HookMapViewOfFileEx);
-        DetourDetach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginMapViewOfFile, HookMapViewOfFile);
-        DetourDetach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginUnmapViewOfFile, HookUnmapViewOfFile);
-        DetourDetach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginCloseHandle, HookCloseHandle);
-        DetourDetach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileVersion2, HookGetFileVersion);
+        DetourDetach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginCreateFileW, HookCreateFileW);
+        DetourDetach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileInformationByHandle, HookGetFileInformationByHandle);
+        DetourDetach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileAttributesExW, HookGetFileAttributesExW);
+        DetourDetach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileSize, HookGetFileSize);
+        DetourDetach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileSizeEx, HookGetFileSizeEx);
+        DetourDetach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginCreateFileMappingW, HookCreateFileMappingW);
+        DetourDetach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginMapViewOfFileEx, HookMapViewOfFileEx);
+        DetourDetach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginMapViewOfFile, HookMapViewOfFile);
+        DetourDetach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginUnmapViewOfFile, HookUnmapViewOfFile);
+        DetourDetach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginCloseHandle, HookCloseHandle);
+        DetourDetach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileVersion2, HookGetFileVersion);
 
         DetourTransactionCommit();
 
-        MmpGlobalDataPtr->MmpDotNet->PreHooked = FALSE;
+        GetMmpGlobalDataPtr()->MmpDotNet->PreHooked = FALSE;
     }
 
-    if (MmpGlobalDataPtr->MmpDotNet->Initialized) {
+    if (GetMmpGlobalDataPtr()->MmpDotNet->Initialized) {
         DetourTransactionBegin();
         DetourUpdateThread(NtCurrentThread());
-        DetourDetach((PVOID*)&MmpGlobalDataPtr->MmpDotNet->Hooks.OriginGetFileVersion1, HookGetFileVersion);
+        DetourDetach((PVOID*)&GetMmpGlobalDataPtr()->MmpDotNet->Hooks.OriginGetFileVersion1, HookGetFileVersion);
         DetourTransactionCommit();
-        MmpGlobalDataPtr->MmpDotNet->Initialized = FALSE;
+        GetMmpGlobalDataPtr()->MmpDotNet->Initialized = FALSE;
     }
 
     LeaveCriticalSection(NtCurrentPeb()->FastPebLock);

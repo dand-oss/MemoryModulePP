@@ -109,10 +109,10 @@ DWORD NTAPI MmpGetThreadCount() {
 }
 
 PMMP_TLSP_RECORD MmpFindTlspRecordLockHeld() {
-    PLIST_ENTRY entry = MmpGlobalDataPtr->MmpTls->MmpThreadLocalStoragePointer.Flink;
+    PLIST_ENTRY entry = GetMmpGlobalDataPtr()->MmpTls->MmpThreadLocalStoragePointer.Flink;
     PTEB teb = NtCurrentTeb();
 
-    while (entry != &MmpGlobalDataPtr->MmpTls->MmpThreadLocalStoragePointer) {
+    while (entry != &GetMmpGlobalDataPtr()->MmpTls->MmpThreadLocalStoragePointer) {
 
         auto p = CONTAINING_RECORD(entry, MMP_TLSP_RECORD, InMmpThreadLocalStoragePointer);
 
@@ -138,14 +138,14 @@ DWORD MmpAllocateTlsLockHeld() {
     //
     // Allocate and replace ThreadLocalStoragePointer for new thread
     //
-    EnterCriticalSection(&MmpGlobalDataPtr->MmpTls->MmpTlspLock);
+    EnterCriticalSection(&GetMmpGlobalDataPtr()->MmpTls->MmpTlspLock);
 
     //
     // Check if we have already initialized
     //
     record = MmpFindTlspRecordLockHeld();
     if (!!record) {
-        LeaveCriticalSection(&MmpGlobalDataPtr->MmpTls->MmpTlspLock);
+        LeaveCriticalSection(&GetMmpGlobalDataPtr()->MmpTls->MmpTlspLock);
         goto __skip_tls;
     }
 
@@ -168,7 +168,7 @@ DWORD MmpAllocateTlsLockHeld() {
 
             NtCurrentTeb()->ThreadLocalStoragePointer = record->TlspMmpBlock;
 
-            InsertTailList(&MmpGlobalDataPtr->MmpTls->MmpThreadLocalStoragePointer, &record->InMmpThreadLocalStoragePointer);
+            InsertTailList(&GetMmpGlobalDataPtr()->MmpTls->MmpThreadLocalStoragePointer, &record->InMmpThreadLocalStoragePointer);
             success = true;
         }
         else {
@@ -176,17 +176,17 @@ DWORD MmpAllocateTlsLockHeld() {
         }
     }
 
-    LeaveCriticalSection(&MmpGlobalDataPtr->MmpTls->MmpTlspLock);
+    LeaveCriticalSection(&GetMmpGlobalDataPtr()->MmpTls->MmpTlspLock);
 
     //
     // Handle MemoryModule Tls data
     //
     if (success) {
-        RtlAcquireSRWLockShared(&MmpGlobalDataPtr->MmpTls->MmpTlsListLock);
+        RtlAcquireSRWLockShared(&GetMmpGlobalDataPtr()->MmpTls->MmpTlsListLock);
 
         auto ThreadLocalStoragePointer = (PVOID*)NtCurrentTeb()->ThreadLocalStoragePointer;
-        PLIST_ENTRY entry = MmpGlobalDataPtr->MmpTls->MmpTlsList.Flink;
-        while (entry != &MmpGlobalDataPtr->MmpTls->MmpTlsList) {
+        PLIST_ENTRY entry = GetMmpGlobalDataPtr()->MmpTls->MmpTlsList.Flink;
+        while (entry != &GetMmpGlobalDataPtr()->MmpTls->MmpTlsList) {
 
             PTLS_ENTRY tls = CONTAINING_RECORD(entry, TLS_ENTRY, TlsEntryLinks);
             auto len = tls->TlsDirectory.EndAddressOfRawData - tls->TlsDirectory.StartAddressOfRawData;
@@ -209,14 +209,14 @@ DWORD MmpAllocateTlsLockHeld() {
             entry = entry->Flink;
         }
 
-        RtlReleaseSRWLockShared(&MmpGlobalDataPtr->MmpTls->MmpTlsListLock);
+        RtlReleaseSRWLockShared(&GetMmpGlobalDataPtr()->MmpTls->MmpTlsListLock);
     }
 
     if (!success) {
         return ERROR_NOT_ENOUGH_MEMORY;
     }
 
-    InterlockedIncrement(&MmpGlobalDataPtr->MmpTls->MmpActiveThreadCount);
+    InterlockedIncrement(&GetMmpGlobalDataPtr()->MmpTls->MmpActiveThreadCount);
 
 __skip_tls:
     return ERROR_SUCCESS;
@@ -258,7 +258,7 @@ VOID NTAPI HookRtlUserThreadStart(
     Context.ThreadStartRoutine = PTHREAD_START_ROUTINE(Function);
     Context.ThreadParameter = Parameter;
 
-    return MmpGlobalDataPtr->MmpTls->Hooks.OriginRtlUserThreadStart(MmpUserThreadStart, &Context);
+    return GetMmpGlobalDataPtr()->MmpTls->Hooks.OriginRtlUserThreadStart(MmpUserThreadStart, &Context);
 }
 #else
 VOID
@@ -282,8 +282,8 @@ HookRtlUserThreadStart(
         // Shadow stack for ntdll!RtlUserThreadStart
         sub esp, 8;
 
-        // MmpGlobalDataPtr->MmpTls->Hooks.OriginRtlUserThreadStart(MmpUserThreadStart, &Context);
-        mov ecx, MmpGlobalDataPtr;
+        // GetMmpGlobalDataPtr()->MmpTls->Hooks.OriginRtlUserThreadStart(MmpUserThreadStart, &Context);
+        mov ecx, GetMmpGlobalDataPtr();
         mov ecx, dword ptr ds : [ecx + 0x48] ;
         mov ecx, dword ptr ds : [ecx + 0x48] ;
         call ecx;
@@ -298,17 +298,17 @@ VOID NTAPI HookLdrShutdownThread(VOID) {
     //
     // Find our tlsp record
     //
-    EnterCriticalSection(&MmpGlobalDataPtr->MmpTls->MmpTlspLock);
+    EnterCriticalSection(&GetMmpGlobalDataPtr()->MmpTls->MmpTlspLock);
 
     record = MmpFindTlspRecordLockHeld();
     if (record) {
         RemoveEntryList(&record->InMmpThreadLocalStoragePointer);
-        --MmpGlobalDataPtr->MmpTls->MmpActiveThreadCount;
+        --GetMmpGlobalDataPtr()->MmpTls->MmpActiveThreadCount;
     }
 
-    assert(0 < (int)MmpGlobalDataPtr->MmpTls->MmpActiveThreadCount);
+    assert(0 < (int)GetMmpGlobalDataPtr()->MmpTls->MmpActiveThreadCount);
 
-    LeaveCriticalSection(&MmpGlobalDataPtr->MmpTls->MmpTlspLock);
+    LeaveCriticalSection(&GetMmpGlobalDataPtr()->MmpTls->MmpTlspLock);
 
     if (record) {
         //
@@ -318,7 +318,7 @@ VOID NTAPI HookLdrShutdownThread(VOID) {
         MmpQueuePostponedTls(record);
     }
     else {
-        if (MmpGlobalDataPtr->MmpTls->MmpTlsList.Flink != &MmpGlobalDataPtr->MmpTls->MmpTlsList) {
+        if (GetMmpGlobalDataPtr()->MmpTls->MmpTlsList.Flink != &GetMmpGlobalDataPtr()->MmpTls->MmpTlsList) {
             assert(NtCurrentTeb()->ThreadLocalStoragePointer == nullptr);
         }
     }
@@ -326,7 +326,7 @@ VOID NTAPI HookLdrShutdownThread(VOID) {
     //
     // Call the original function
     //
-    MmpGlobalDataPtr->MmpTls->Hooks.OriginLdrShutdownThread();
+    GetMmpGlobalDataPtr()->MmpTls->Hooks.OriginLdrShutdownThread();
 }
 
 BOOL NTAPI PreHookNtSetInformationProcess() {
@@ -380,7 +380,7 @@ BOOL NTAPI PreHookNtSetInformationProcess() {
             );
 
             if (NT_SUCCESS(status)) {
-                EnterCriticalSection(&MmpGlobalDataPtr->MmpTls->MmpTlspLock);
+                EnterCriticalSection(&GetMmpGlobalDataPtr()->MmpTls->MmpTlspLock);
                 for (DWORD i = 0; i < CurrentThreadCount; ++i) {
                     auto const& LdrTls = ProcessTlsInformation->ThreadData[i];
                     auto const& MmpTls = tmpTlsInformation->ThreadData[i];
@@ -390,9 +390,9 @@ BOOL NTAPI PreHookNtSetInformationProcess() {
                     record->TlspLdrBlock = LdrTls.TlsVector;
                     record->TlspMmpBlock = MmpTls.TlsVector;
                     record->UniqueThread = LdrTls.ThreadId;
-                    InsertTailList(&MmpGlobalDataPtr->MmpTls->MmpThreadLocalStoragePointer, &record->InMmpThreadLocalStoragePointer);
+                    InsertTailList(&GetMmpGlobalDataPtr()->MmpTls->MmpThreadLocalStoragePointer, &record->InMmpThreadLocalStoragePointer);
                 }
-                LeaveCriticalSection(&MmpGlobalDataPtr->MmpTls->MmpTlspLock);
+                LeaveCriticalSection(&GetMmpGlobalDataPtr()->MmpTls->MmpTlspLock);
             }
 
         }
@@ -413,8 +413,8 @@ int MmpSyncThreadTlsData() {
     // Build thread id set.
     //
 
-    PLIST_ENTRY entry = MmpGlobalDataPtr->MmpTls->MmpThreadLocalStoragePointer.Flink;
-    while (entry != &MmpGlobalDataPtr->MmpTls->MmpThreadLocalStoragePointer) {
+    PLIST_ENTRY entry = GetMmpGlobalDataPtr()->MmpTls->MmpThreadLocalStoragePointer.Flink;
+    while (entry != &GetMmpGlobalDataPtr()->MmpTls->MmpThreadLocalStoragePointer) {
         PMMP_TLSP_RECORD j = CONTAINING_RECORD(entry, MMP_TLSP_RECORD, InMmpThreadLocalStoragePointer);
         threads.insert(j->UniqueThread);
         
@@ -464,8 +464,8 @@ int MmpSyncThreadTlsData() {
                                         }
 
                                         teb->ThreadLocalStoragePointer = record->TlspMmpBlock;
-                                        InsertTailList(&MmpGlobalDataPtr->MmpTls->MmpThreadLocalStoragePointer, &record->InMmpThreadLocalStoragePointer);
-                                        InterlockedIncrement(&MmpGlobalDataPtr->MmpTls->MmpActiveThreadCount);
+                                        InsertTailList(&GetMmpGlobalDataPtr()->MmpTls->MmpThreadLocalStoragePointer, &record->InMmpThreadLocalStoragePointer);
+                                        InterlockedIncrement(&GetMmpGlobalDataPtr()->MmpTls->MmpActiveThreadCount);
 
                                         ++count;
                                     }
@@ -500,7 +500,7 @@ NTSTATUS NTAPI HookNtSetInformationProcess(
     _In_ ULONG ProcessInformationLength) {
 
     if (ProcessInformationClass != ProcessTlsInformation) {
-        return MmpGlobalDataPtr->MmpTls->Hooks.OriginNtSetInformationProcess(
+        return GetMmpGlobalDataPtr()->MmpTls->Hooks.OriginNtSetInformationProcess(
             ProcessHandle,
             ProcessInformationClass,
             ProcessInformation,
@@ -579,7 +579,7 @@ NTSTATUS NTAPI HookNtSetInformationProcess(
             }
         }
 
-        status = MmpGlobalDataPtr->MmpTls->Hooks.OriginNtSetInformationProcess(
+        status = GetMmpGlobalDataPtr()->MmpTls->Hooks.OriginNtSetInformationProcess(
             hProcess,
             ProcessInformationClass,
             Tls,
@@ -591,16 +591,16 @@ NTSTATUS NTAPI HookNtSetInformationProcess(
         //
         // Modify our mapping
         //
-        EnterCriticalSection(&MmpGlobalDataPtr->MmpTls->MmpTlspLock);
+        EnterCriticalSection(&GetMmpGlobalDataPtr()->MmpTls->MmpTlspLock);
         for (ULONG i = 0; i < Tls->ThreadDataCount; ++i) {
 
             if (Tls->ThreadData[i].Flags == 2) {
 
                 BOOL found = FALSE;
-                PLIST_ENTRY entry = MmpGlobalDataPtr->MmpTls->MmpThreadLocalStoragePointer.Flink;
+                PLIST_ENTRY entry = GetMmpGlobalDataPtr()->MmpTls->MmpThreadLocalStoragePointer.Flink;
 
                 // Find thread-spec tlsp
-                while (entry != &MmpGlobalDataPtr->MmpTls->MmpThreadLocalStoragePointer) {
+                while (entry != &GetMmpGlobalDataPtr()->MmpTls->MmpThreadLocalStoragePointer) {
 
                     PMMP_TLSP_RECORD j = CONTAINING_RECORD(entry, MMP_TLSP_RECORD, InMmpThreadLocalStoragePointer);
 
@@ -643,7 +643,7 @@ NTSTATUS NTAPI HookNtSetInformationProcess(
             }
 
         }
-        LeaveCriticalSection(&MmpGlobalDataPtr->MmpTls->MmpTlspLock);
+        LeaveCriticalSection(&GetMmpGlobalDataPtr()->MmpTls->MmpTlspLock);
 
     } while (false);
 
@@ -655,7 +655,7 @@ NTSTATUS NTAPI MmpAcquireTlsIndex(_Out_ PULONG TlsIndex) {
 
     *TlsIndex = -1;
 
-    ULONG Index = RtlFindClearBitsAndSet(&MmpGlobalDataPtr->MmpTls->MmpTlsBitmap, 1, 0);
+    ULONG Index = RtlFindClearBitsAndSet(&GetMmpGlobalDataPtr()->MmpTls->MmpTlsBitmap, 1, 0);
     if (Index != -1) {
         *TlsIndex = Index;
         return STATUS_SUCCESS;
@@ -716,9 +716,9 @@ NTSTATUS NTAPI MmpAllocateTlsEntry(
     Entry->TlsDirectory.Characteristics =
         *PULONG(Entry->TlsDirectory.AddressOfIndex) = TlsIndex;
 
-    RtlAcquireSRWLockExclusive(&MmpGlobalDataPtr->MmpTls->MmpTlsListLock);
-    InsertTailList(&MmpGlobalDataPtr->MmpTls->MmpTlsList, &Entry->TlsEntryLinks);
-    RtlReleaseSRWLockExclusive(&MmpGlobalDataPtr->MmpTls->MmpTlsListLock);
+    RtlAcquireSRWLockExclusive(&GetMmpGlobalDataPtr()->MmpTls->MmpTlsListLock);
+    InsertTailList(&GetMmpGlobalDataPtr()->MmpTls->MmpTlsList, &Entry->TlsEntryLinks);
+    RtlReleaseSRWLockExclusive(&GetMmpGlobalDataPtr()->MmpTls->MmpTlsListLock);
 
     *lpTlsEntry = Entry;
     *lpTlsIndex = TlsIndex;
@@ -727,20 +727,20 @@ NTSTATUS NTAPI MmpAllocateTlsEntry(
 
 NTSTATUS NTAPI MmpReleaseTlsEntry(_In_ PLDR_DATA_TABLE_ENTRY lpModuleEntry) {
     
-    RtlAcquireSRWLockExclusive(&MmpGlobalDataPtr->MmpTls->MmpTlsListLock);
+    RtlAcquireSRWLockExclusive(&GetMmpGlobalDataPtr()->MmpTls->MmpTlsListLock);
 
-    for (auto entry = MmpGlobalDataPtr->MmpTls->MmpTlsList.Flink; entry != &MmpGlobalDataPtr->MmpTls->MmpTlsList; entry = entry->Flink) {
+    for (auto entry = GetMmpGlobalDataPtr()->MmpTls->MmpTlsList.Flink; entry != &GetMmpGlobalDataPtr()->MmpTls->MmpTlsList; entry = entry->Flink) {
         auto p = CONTAINING_RECORD(entry, TLS_ENTRY, TlsEntryLinks);
         if (p->ModuleEntry == lpModuleEntry) {
             RemoveEntryList(&p->TlsEntryLinks);
-            RtlClearBit(&MmpGlobalDataPtr->MmpTls->MmpTlsBitmap, p->TlsDirectory.Characteristics);
+            RtlClearBit(&GetMmpGlobalDataPtr()->MmpTls->MmpTlsBitmap, p->TlsDirectory.Characteristics);
             RtlFreeHeap(RtlProcessHeap(), 0, p);
 
             break;
         }
     }
 
-    RtlReleaseSRWLockExclusive(&MmpGlobalDataPtr->MmpTls->MmpTlsListLock);
+    RtlReleaseSRWLockExclusive(&GetMmpGlobalDataPtr()->MmpTls->MmpTlsListLock);
 
     return STATUS_SUCCESS;
 }
@@ -773,7 +773,7 @@ NTSTATUS NTAPI MmpHandleTlsData(_In_ PLDR_DATA_TABLE_ENTRY lpModuleEntry) {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    auto ThreadCount = MmpGlobalDataPtr->MmpTls->MmpActiveThreadCount;
+    auto ThreadCount = GetMmpGlobalDataPtr()->MmpTls->MmpActiveThreadCount;
     auto success = true;
     auto Length = sizeof(PROCESS_TLS_INFORMATION) + (ThreadCount - 1) * sizeof(THREAD_TLS_INFORMATION);
     auto ProcessTlsInformation = PPROCESS_TLS_INFORMATION(RtlAllocateHeap(RtlProcessHeap(), HEAP_ZERO_MEMORY, Length));
@@ -832,10 +832,10 @@ NTSTATUS NTAPI MmpHandleTlsData(_In_ PLDR_DATA_TABLE_ENTRY lpModuleEntry) {
     }
 
     if (ThreadCount) {
-        EnterCriticalSection(&MmpGlobalDataPtr->MmpTls->MmpTlspLock);
-        MmpGlobalDataPtr->MmpTls->MmpActiveThreadCount -= ThreadCount;
-        assert(MmpGlobalDataPtr->MmpTls->MmpActiveThreadCount > 0);
-        LeaveCriticalSection(&MmpGlobalDataPtr->MmpTls->MmpTlspLock);
+        EnterCriticalSection(&GetMmpGlobalDataPtr()->MmpTls->MmpTlspLock);
+        GetMmpGlobalDataPtr()->MmpTls->MmpActiveThreadCount -= ThreadCount;
+        assert(GetMmpGlobalDataPtr()->MmpTls->MmpActiveThreadCount > 0);
+        LeaveCriticalSection(&GetMmpGlobalDataPtr()->MmpTls->MmpTlspLock);
     }
 
     RtlFreeHeap(RtlProcessHeap(), 0, ProcessTlsInformation);
@@ -853,26 +853,26 @@ BOOL NTAPI MmpTlsInitialize() {
     //
     // Capture thread count
     //
-    MmpGlobalDataPtr->MmpTls->MmpActiveThreadCount = MmpGetThreadCount();
+    GetMmpGlobalDataPtr()->MmpTls->MmpActiveThreadCount = MmpGetThreadCount();
 
     //
     // Initialize tlsp
     //
-    InitializeCriticalSection(&MmpGlobalDataPtr->MmpTls->MmpTlspLock);
-    InitializeListHead(&MmpGlobalDataPtr->MmpTls->MmpThreadLocalStoragePointer);
+    InitializeCriticalSection(&GetMmpGlobalDataPtr()->MmpTls->MmpTlspLock);
+    InitializeListHead(&GetMmpGlobalDataPtr()->MmpTls->MmpThreadLocalStoragePointer);
 
     //
     // Initialize tls list
     //
-    InitializeListHead(&MmpGlobalDataPtr->MmpTls->MmpTlsList);
-    RtlInitializeSRWLock(&MmpGlobalDataPtr->MmpTls->MmpTlsListLock);
+    InitializeListHead(&GetMmpGlobalDataPtr()->MmpTls->MmpTlsList);
+    RtlInitializeSRWLock(&GetMmpGlobalDataPtr()->MmpTls->MmpTlsListLock);
 
     PULONG buffer = PULONG(RtlAllocateHeap(RtlProcessHeap(), HEAP_ZERO_MEMORY, MMP_TLSP_INDEX_BUFFER_SIZE));
     if (!buffer) RtlRaiseStatus(STATUS_NO_MEMORY);
 
 
     RtlFillMemory(buffer, MMP_START_TLS_INDEX / 8, -1);
-    RtlInitializeBitMap(&MmpGlobalDataPtr->MmpTls->MmpTlsBitmap, buffer, MMP_MAXIMUM_TLS_INDEX);
+    RtlInitializeBitMap(&GetMmpGlobalDataPtr()->MmpTls->MmpTlsBitmap, buffer, MMP_MAXIMUM_TLS_INDEX);
 
     if (NtCurrentTeb()->ThreadLocalStoragePointer) {
         if (!PreHookNtSetInformationProcess()) {
@@ -884,15 +884,15 @@ BOOL NTAPI MmpTlsInitialize() {
     // Hook functions
     //
 
-    MmpGlobalDataPtr->MmpTls->Hooks.OriginLdrShutdownThread = LdrShutdownThread;
-    MmpGlobalDataPtr->MmpTls->Hooks.OriginNtSetInformationProcess = NtSetInformationProcess;
-    MmpGlobalDataPtr->MmpTls->Hooks.OriginRtlUserThreadStart = (decltype(&RtlUserThreadStart))GetProcAddress((HMODULE)MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry->DllBase, "RtlUserThreadStart");
+    GetMmpGlobalDataPtr()->MmpTls->Hooks.OriginLdrShutdownThread = LdrShutdownThread;
+    GetMmpGlobalDataPtr()->MmpTls->Hooks.OriginNtSetInformationProcess = NtSetInformationProcess;
+    GetMmpGlobalDataPtr()->MmpTls->Hooks.OriginRtlUserThreadStart = (decltype(&RtlUserThreadStart))GetProcAddress((HMODULE)GetMmpGlobalDataPtr()->MmpBaseAddressIndex->NtdllLdrEntry->DllBase, "RtlUserThreadStart");
 
     DetourTransactionBegin();
     DetourUpdateThread(NtCurrentThread());
-    DetourAttach((PVOID*)&MmpGlobalDataPtr->MmpTls->Hooks.OriginLdrShutdownThread, HookLdrShutdownThread);
-    DetourAttach((PVOID*)&MmpGlobalDataPtr->MmpTls->Hooks.OriginNtSetInformationProcess, HookNtSetInformationProcess);
-    DetourAttach((PVOID*)&MmpGlobalDataPtr->MmpTls->Hooks.OriginRtlUserThreadStart, HookRtlUserThreadStart);
+    DetourAttach((PVOID*)&GetMmpGlobalDataPtr()->MmpTls->Hooks.OriginLdrShutdownThread, HookLdrShutdownThread);
+    DetourAttach((PVOID*)&GetMmpGlobalDataPtr()->MmpTls->Hooks.OriginNtSetInformationProcess, HookNtSetInformationProcess);
+    DetourAttach((PVOID*)&GetMmpGlobalDataPtr()->MmpTls->Hooks.OriginRtlUserThreadStart, HookRtlUserThreadStart);
     DetourTransactionCommit();
 
     MmpTlsFiberInitialize();
@@ -904,9 +904,9 @@ VOID NTAPI MmpTlsCleanup() {
 
     DetourTransactionBegin();
     DetourUpdateThread(NtCurrentThread());
-    DetourDetach((PVOID*)&MmpGlobalDataPtr->MmpTls->Hooks.OriginLdrShutdownThread, HookLdrShutdownThread);
-    DetourDetach((PVOID*)&MmpGlobalDataPtr->MmpTls->Hooks.OriginNtSetInformationProcess, HookNtSetInformationProcess);
-    DetourDetach((PVOID*)&MmpGlobalDataPtr->MmpTls->Hooks.OriginRtlUserThreadStart, HookRtlUserThreadStart);
+    DetourDetach((PVOID*)&GetMmpGlobalDataPtr()->MmpTls->Hooks.OriginLdrShutdownThread, HookLdrShutdownThread);
+    DetourDetach((PVOID*)&GetMmpGlobalDataPtr()->MmpTls->Hooks.OriginNtSetInformationProcess, HookNtSetInformationProcess);
+    DetourDetach((PVOID*)&GetMmpGlobalDataPtr()->MmpTls->Hooks.OriginRtlUserThreadStart, HookRtlUserThreadStart);
     DetourTransactionCommit();
 
 }

@@ -66,7 +66,7 @@ NTSTATUS NTAPI LdrLoadDllMemoryExW(
 			status = STATUS_INVALID_IMAGE_FORMAT;
 		}
 
-		if (MmpGlobalDataPtr == nullptr) {
+		if (GetMmpGlobalDataPtr() == nullptr) {
 			status = STATUS_INVALID_PARAMETER;
 		}
 	}
@@ -181,7 +181,7 @@ NTSTATUS NTAPI LdrLoadDllMemoryExW(
 		}
 
 		if (!(dwFlags & LOAD_FLAGS_NOT_HANDLE_TLS)) {
-			status = MmpGlobalDataPtr->MmpFunctions->_MmpHandleTlsData(ModuleEntry);
+			status = GetMmpGlobalDataPtr()->MmpFunctions->_MmpHandleTlsData(ModuleEntry);
 			if (!NT_SUCCESS(status)) {
 				if (dwFlags & LOAD_FLAGS_NOT_FAIL_IF_HANDLE_TLS) status = 0x7fffffff;
 				if (!NT_SUCCESS(status))break;
@@ -232,7 +232,7 @@ NTSTATUS NTAPI LdrUnloadDllMemory(_In_ HMEMORYMODULE BaseAddress) {
 			break;
 		}
 
-		if (MmpGlobalDataPtr == nullptr) {
+		if (GetMmpGlobalDataPtr() == nullptr) {
 			status = STATUS_INVALID_PARAMETER;
 			break;
 		}
@@ -274,7 +274,7 @@ NTSTATUS NTAPI LdrUnloadDllMemory(_In_ HMEMORYMODULE BaseAddress) {
 			}
 
 			if (module->TlsHandled) {
-				status = MmpGlobalDataPtr->MmpFunctions->_MmpReleaseTlsEntry(CurEntry);
+				status = GetMmpGlobalDataPtr()->MmpFunctions->_MmpReleaseTlsEntry(CurEntry);
 				if (!NT_SUCCESS(status)) __fastfail(FAST_FAIL_FATAL_APP_EXIT);
 			}
 
@@ -297,7 +297,7 @@ VOID NTAPI LdrUnloadDllMemoryAndExitThread(_In_ HMEMORYMODULE BaseAddress, _In_ 
 NTSTATUS NTAPI LdrQuerySystemMemoryModuleFeatures(_Out_ PDWORD pFeatures) {
 	NTSTATUS status = STATUS_SUCCESS;
 	__try {
-		*pFeatures = MmpGlobalDataPtr->MmpFeatures;
+		*pFeatures = GetMmpGlobalDataPtr()->MmpFeatures;
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER) {
 		status = GetExceptionCode();

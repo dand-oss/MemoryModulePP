@@ -3,12 +3,19 @@
 #include <wchar.h>
 #include <cstdio>
 
-PMMP_GLOBAL_DATA MmpGlobalDataPtr;
+// forward
+NTSTATUS NTAPI MmInitialize() ;
+
+static PMMP_GLOBAL_DATA _MmpGlobalDataPtr;
 
 // DLL compliant access
 PMMP_GLOBAL_DATA NTAPI GetMmpGlobalDataPtr()
 {
-   return MmpGlobalDataPtr;
+    if ( !_MmpGlobalDataPtr) {
+        // sometime static init fails, try again on access
+        MmInitialize();
+    }
+    return _MmpGlobalDataPtr;
 }
 
 #if MEMORY_MODULE_IS_PREVIEW(MEMORY_MODULE_MINOR_VERSION)
@@ -17,7 +24,7 @@ PMMP_GLOBAL_DATA NTAPI GetMmpGlobalDataPtr()
 
 PRTL_RB_TREE FindLdrpModuleBaseAddressIndex() {
     PRTL_RB_TREE LdrpModuleBaseAddressIndex = nullptr;
-    PLDR_DATA_TABLE_ENTRY_WIN10 nt10 = reinterpret_cast<decltype(nt10)>(MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry);
+    PLDR_DATA_TABLE_ENTRY_WIN10 nt10 = reinterpret_cast<decltype(nt10)>(GetMmpGlobalDataPtr()->MmpBaseAddressIndex->NtdllLdrEntry);
     PRTL_BALANCED_NODE node = nullptr;
     if (!nt10 || !RtlIsWindowsVersionOrGreater(6, 2, 0))return nullptr;
     node = &nt10->BaseAddressIndexNode;
@@ -322,12 +329,12 @@ VOID InitializeWindowsVersion() {
 
 	}
 
-	MmpGlobalDataPtr->WindowsVersion = version;
+	GetMmpGlobalDataPtr()->WindowsVersion = version;
 	if (version != WINDOWS_VERSION::invalid) {
-		MmpGlobalDataPtr->NtVersions.MajorVersion = MajorVersion;
-		MmpGlobalDataPtr->NtVersions.MinorVersion = MinorVersion;
-		MmpGlobalDataPtr->NtVersions.BuildNumber = BuildNumber;
-		MmpGlobalDataPtr->LdrDataTableEntrySize = static_cast<WORD>(LdrDataTableEntrySize);
+		GetMmpGlobalDataPtr()->NtVersions.MajorVersion = MajorVersion;
+		GetMmpGlobalDataPtr()->NtVersions.MinorVersion = MinorVersion;
+		GetMmpGlobalDataPtr()->NtVersions.BuildNumber = BuildNumber;
+		GetMmpGlobalDataPtr()->LdrDataTableEntrySize = static_cast<WORD>(LdrDataTableEntrySize);
 	}
 
 }
@@ -377,7 +384,7 @@ NTSTATUS MmpAllocateGlobalData() {
 		status = NtMapViewOfSection(
 			hSection,
 			NtCurrentProcess(),
-			reinterpret_cast<PVOID*>(MmpGlobalDataPtr),
+			reinterpret_cast<PVOID*>(_MmpGlobalDataPtr),
 			0,
 			0,
 			nullptr,
@@ -416,7 +423,7 @@ NTSTATUS MmpAllocateGlobalData() {
 				NtClose(hSection);
 
 				if (NT_SUCCESS(status)) {
-					MmpGlobalDataPtr = reinterpret_cast<PMMP_GLOBAL_DATA>(static_cast<PMMP_GLOBAL_DATA>(BaseAddress)->BaseAddress);
+					_MmpGlobalDataPtr = reinterpret_cast<PMMP_GLOBAL_DATA>(static_cast<PMMP_GLOBAL_DATA>(BaseAddress)->BaseAddress);
 					NtUnmapViewOfSection(NtCurrentProcess(), BaseAddress);
 
 					status = STATUS_ALREADY_INITIALIZED;
@@ -437,14 +444,14 @@ NTSTATUS InitializeLockHeld() {
 		status = MmpAllocateGlobalData();
 		if (!NT_SUCCESS(status)) {
 			if (status == STATUS_ALREADY_INITIALIZED) {
-				if ((MmpGlobalDataPtr->MajorVersion != MEMORY_MODULE_MAJOR_VERSION) ||
-					MEMORY_MODULE_IS_PREVIEW(MmpGlobalDataPtr->MinorVersion) != MEMORY_MODULE_IS_PREVIEW(MEMORY_MODULE_MINOR_VERSION) ||
-					(MEMORY_MODULE_IS_PREVIEW(MEMORY_MODULE_MINOR_VERSION) ? MmpGlobalDataPtr->MinorVersion != MEMORY_MODULE_MINOR_VERSION :
-						MmpGlobalDataPtr->MinorVersion < MEMORY_MODULE_MINOR_VERSION)) {
+				if ((GetMmpGlobalDataPtr()->MajorVersion != MEMORY_MODULE_MAJOR_VERSION) ||
+					MEMORY_MODULE_IS_PREVIEW(GetMmpGlobalDataPtr()->MinorVersion) != MEMORY_MODULE_IS_PREVIEW(MEMORY_MODULE_MINOR_VERSION) ||
+					(MEMORY_MODULE_IS_PREVIEW(MEMORY_MODULE_MINOR_VERSION) ? GetMmpGlobalDataPtr()->MinorVersion != MEMORY_MODULE_MINOR_VERSION :
+						GetMmpGlobalDataPtr()->MinorVersion < MEMORY_MODULE_MINOR_VERSION)) {
 					status = STATUS_NOT_SUPPORTED;
 				}
 				else {
-					++MmpGlobalDataPtr->ReferenceCount;
+					++GetMmpGlobalDataPtr()->ReferenceCount;
 					status = STATUS_SUCCESS;
 				}
 			}
@@ -452,60 +459,60 @@ NTSTATUS InitializeLockHeld() {
 			break;
 		}
 
-        MmpGlobalDataPtr->MajorVersion = MEMORY_MODULE_MAJOR_VERSION;
-        MmpGlobalDataPtr->MinorVersion = MEMORY_MODULE_MINOR_VERSION;
-		MmpGlobalDataPtr->BaseAddress = MmpGlobalDataPtr;
-		MmpGlobalDataPtr->ReferenceCount = 1;
+        GetMmpGlobalDataPtr()->MajorVersion = MEMORY_MODULE_MAJOR_VERSION;
+        GetMmpGlobalDataPtr()->MinorVersion = MEMORY_MODULE_MINOR_VERSION;
+		GetMmpGlobalDataPtr()->BaseAddress = GetMmpGlobalDataPtr();
+		GetMmpGlobalDataPtr()->ReferenceCount = 1;
 
-		GetSystemInfo(&MmpGlobalDataPtr->SystemInfo);
+		GetSystemInfo(&GetMmpGlobalDataPtr()->SystemInfo);
 
 		InitializeWindowsVersion();
-		if (MmpGlobalDataPtr->WindowsVersion == WINDOWS_VERSION::invalid) {
-			NtUnmapViewOfSection(NtCurrentProcess(), MmpGlobalDataPtr);
+		if (GetMmpGlobalDataPtr()->WindowsVersion == WINDOWS_VERSION::invalid) {
+			NtUnmapViewOfSection(NtCurrentProcess(), GetMmpGlobalDataPtr());
 			status = STATUS_NOT_SUPPORTED;
 			break;
 		}
 
-		MmpGlobalDataPtr->MmpBaseAddressIndex = reinterpret_cast<PMMP_BASE_ADDRESS_INDEX_DATA>(reinterpret_cast<LPBYTE>(MmpGlobalDataPtr) + sizeof(MMP_GLOBAL_DATA));
-		MmpGlobalDataPtr->MmpInvertedFunctionTable = reinterpret_cast<PMMP_INVERTED_FUNCTION_TABLE_DATA>(reinterpret_cast<LPBYTE>(MmpGlobalDataPtr->MmpBaseAddressIndex) + sizeof(MMP_BASE_ADDRESS_INDEX_DATA));
-		MmpGlobalDataPtr->MmpLdrEntry = reinterpret_cast<PMMP_LDR_ENTRY_DATA>(reinterpret_cast<LPBYTE>(MmpGlobalDataPtr->MmpInvertedFunctionTable) + sizeof(MMP_INVERTED_FUNCTION_TABLE_DATA));
-		MmpGlobalDataPtr->MmpTls = reinterpret_cast<PMMP_TLS_DATA>(reinterpret_cast<PBYTE>(MmpGlobalDataPtr->MmpLdrEntry) + sizeof(MMP_LDR_ENTRY_DATA));
-		MmpGlobalDataPtr->MmpDotNet = reinterpret_cast<PMMP_DOT_NET_DATA>(reinterpret_cast<LPBYTE>(MmpGlobalDataPtr->MmpTls) + sizeof(MMP_TLS_DATA));
-		MmpGlobalDataPtr->MmpFunctions = reinterpret_cast<PMMP_FUNCTIONS>(reinterpret_cast<LPBYTE>(MmpGlobalDataPtr->MmpDotNet) + sizeof(MMP_DOT_NET_DATA));
-		MmpGlobalDataPtr->MmpIat = reinterpret_cast<PMMP_IAT_DATA>(reinterpret_cast<LPBYTE>(MmpGlobalDataPtr->MmpFunctions) + sizeof(MMP_FUNCTIONS));
+		GetMmpGlobalDataPtr()->MmpBaseAddressIndex = reinterpret_cast<PMMP_BASE_ADDRESS_INDEX_DATA>(reinterpret_cast<LPBYTE>(GetMmpGlobalDataPtr()) + sizeof(MMP_GLOBAL_DATA));
+		GetMmpGlobalDataPtr()->MmpInvertedFunctionTable = reinterpret_cast<PMMP_INVERTED_FUNCTION_TABLE_DATA>(reinterpret_cast<LPBYTE>(GetMmpGlobalDataPtr()->MmpBaseAddressIndex) + sizeof(MMP_BASE_ADDRESS_INDEX_DATA));
+		GetMmpGlobalDataPtr()->MmpLdrEntry = reinterpret_cast<PMMP_LDR_ENTRY_DATA>(reinterpret_cast<LPBYTE>(GetMmpGlobalDataPtr()->MmpInvertedFunctionTable) + sizeof(MMP_INVERTED_FUNCTION_TABLE_DATA));
+		GetMmpGlobalDataPtr()->MmpTls = reinterpret_cast<PMMP_TLS_DATA>(reinterpret_cast<PBYTE>(GetMmpGlobalDataPtr()->MmpLdrEntry) + sizeof(MMP_LDR_ENTRY_DATA));
+		GetMmpGlobalDataPtr()->MmpDotNet = reinterpret_cast<PMMP_DOT_NET_DATA>(reinterpret_cast<LPBYTE>(GetMmpGlobalDataPtr()->MmpTls) + sizeof(MMP_TLS_DATA));
+		GetMmpGlobalDataPtr()->MmpFunctions = reinterpret_cast<PMMP_FUNCTIONS>(reinterpret_cast<LPBYTE>(GetMmpGlobalDataPtr()->MmpDotNet) + sizeof(MMP_DOT_NET_DATA));
+		GetMmpGlobalDataPtr()->MmpIat = reinterpret_cast<PMMP_IAT_DATA>(reinterpret_cast<LPBYTE>(GetMmpGlobalDataPtr()->MmpFunctions) + sizeof(MMP_FUNCTIONS));
 
 		PLDR_DATA_TABLE_ENTRY pNtdllEntry = RtlFindLdrTableEntryByBaseName(L"ntdll.dll");
-		MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry = pNtdllEntry;
-        MmpGlobalDataPtr->MmpBaseAddressIndex->LdrpModuleBaseAddressIndex = FindLdrpModuleBaseAddressIndex();
-		MmpGlobalDataPtr->MmpBaseAddressIndex->_RtlRbInsertNodeEx = GetProcAddress(static_cast<HMODULE>(pNtdllEntry->DllBase), "RtlRbInsertNodeEx");
-		MmpGlobalDataPtr->MmpBaseAddressIndex->_RtlRbRemoveNode = GetProcAddress(static_cast<HMODULE>(pNtdllEntry->DllBase), "RtlRbRemoveNode");
+		GetMmpGlobalDataPtr()->MmpBaseAddressIndex->NtdllLdrEntry = pNtdllEntry;
+        GetMmpGlobalDataPtr()->MmpBaseAddressIndex->LdrpModuleBaseAddressIndex = FindLdrpModuleBaseAddressIndex();
+		GetMmpGlobalDataPtr()->MmpBaseAddressIndex->_RtlRbInsertNodeEx = GetProcAddress(static_cast<HMODULE>(pNtdllEntry->DllBase), "RtlRbInsertNodeEx");
+		GetMmpGlobalDataPtr()->MmpBaseAddressIndex->_RtlRbRemoveNode = GetProcAddress(static_cast<HMODULE>(pNtdllEntry->DllBase), "RtlRbRemoveNode");
 
-		MmpGlobalDataPtr->MmpLdrEntry->LdrpHashTable = FindLdrpHashTable();
+		GetMmpGlobalDataPtr()->MmpLdrEntry->LdrpHashTable = FindLdrpHashTable();
 
-		MmpGlobalDataPtr->MmpInvertedFunctionTable->LdrpInvertedFunctionTable = FindLdrpInvertedFunctionTable();
+		GetMmpGlobalDataPtr()->MmpInvertedFunctionTable->LdrpInvertedFunctionTable = FindLdrpInvertedFunctionTable();
 
-        MmpGlobalDataPtr->MmpFeatures = MEMORY_FEATURE_SUPPORT_VERSION | MEMORY_FEATURE_LDRP_HEAP | MEMORY_FEATURE_LDRP_HANDLE_TLS_DATA | MEMORY_FEATURE_LDRP_RELEASE_TLS_ENTRY;
-        if (MmpGlobalDataPtr->MmpBaseAddressIndex->LdrpModuleBaseAddressIndex)MmpGlobalDataPtr->MmpFeatures |= MEMORY_FEATURE_MODULE_BASEADDRESS_INDEX;
-        if (MmpGlobalDataPtr->MmpLdrEntry->LdrpHashTable)MmpGlobalDataPtr->MmpFeatures |= MEMORY_FEATURE_LDRP_HASH_TABLE;
-        if (MmpGlobalDataPtr->MmpInvertedFunctionTable->LdrpInvertedFunctionTable)MmpGlobalDataPtr->MmpFeatures |= MEMORY_FEATURE_INVERTED_FUNCTION_TABLE;
+        GetMmpGlobalDataPtr()->MmpFeatures = MEMORY_FEATURE_SUPPORT_VERSION | MEMORY_FEATURE_LDRP_HEAP | MEMORY_FEATURE_LDRP_HANDLE_TLS_DATA | MEMORY_FEATURE_LDRP_RELEASE_TLS_ENTRY;
+        if (GetMmpGlobalDataPtr()->MmpBaseAddressIndex->LdrpModuleBaseAddressIndex)GetMmpGlobalDataPtr()->MmpFeatures |= MEMORY_FEATURE_MODULE_BASEADDRESS_INDEX;
+        if (GetMmpGlobalDataPtr()->MmpLdrEntry->LdrpHashTable)GetMmpGlobalDataPtr()->MmpFeatures |= MEMORY_FEATURE_LDRP_HASH_TABLE;
+        if (GetMmpGlobalDataPtr()->MmpInvertedFunctionTable->LdrpInvertedFunctionTable)GetMmpGlobalDataPtr()->MmpFeatures |= MEMORY_FEATURE_INVERTED_FUNCTION_TABLE;
 
-		MmpGlobalDataPtr->MmpFunctions->_LdrLoadDllMemoryExW = LdrLoadDllMemoryExW;
-		MmpGlobalDataPtr->MmpFunctions->_LdrUnloadDllMemory = LdrUnloadDllMemory;
-		MmpGlobalDataPtr->MmpFunctions->_LdrUnloadDllMemoryAndExitThread = LdrUnloadDllMemoryAndExitThread;
-		MmpGlobalDataPtr->MmpFunctions->_MmpHandleTlsData = MmpHandleTlsData;
-		MmpGlobalDataPtr->MmpFunctions->_MmpReleaseTlsEntry = MmpReleaseTlsEntry;
+		GetMmpGlobalDataPtr()->MmpFunctions->_LdrLoadDllMemoryExW = LdrLoadDllMemoryExW;
+		GetMmpGlobalDataPtr()->MmpFunctions->_LdrUnloadDllMemory = LdrUnloadDllMemory;
+		GetMmpGlobalDataPtr()->MmpFunctions->_LdrUnloadDllMemoryAndExitThread = LdrUnloadDllMemoryAndExitThread;
+		GetMmpGlobalDataPtr()->MmpFunctions->_MmpHandleTlsData = MmpHandleTlsData;
+		GetMmpGlobalDataPtr()->MmpFunctions->_MmpReleaseTlsEntry = MmpReleaseTlsEntry;
 
-		InitializeCriticalSection(&MmpGlobalDataPtr->MmpIat->MmpIatResolverListLock);
-		InitializeListHead(&MmpGlobalDataPtr->MmpIat->MmpIatResolverList);
-		InitializeListHead(&MmpGlobalDataPtr->MmpIat->MmpIatResolverHead.InMmpIatResolverList);
-		MmpGlobalDataPtr->MmpIat->MmpIatResolverHead.LoadLibraryProv = LoadLibraryA;
-		MmpGlobalDataPtr->MmpIat->MmpIatResolverHead.FreeLibraryProv = FreeLibrary;
-		MmpGlobalDataPtr->MmpIat->MmpIatResolverHead.ReferenceCount = 1;
-		InsertTailList(&MmpGlobalDataPtr->MmpIat->MmpIatResolverList, &MmpGlobalDataPtr->MmpIat->MmpIatResolverHead.InMmpIatResolverList);
+		InitializeCriticalSection(&GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverListLock);
+		InitializeListHead(&GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverList);
+		InitializeListHead(&GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverHead.InMmpIatResolverList);
+		GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverHead.LoadLibraryProv = LoadLibraryA;
+		GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverHead.FreeLibraryProv = FreeLibrary;
+		GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverHead.ReferenceCount = 1;
+		InsertTailList(&GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverList, &GetMmpGlobalDataPtr()->MmpIat->MmpIatResolverHead.InMmpIatResolverList);
 
 		MmpTlsInitialize();
 
-		MmpGlobalDataPtr->MmpDotNet->Initialized = MmpGlobalDataPtr->MmpDotNet->PreHooked = FALSE;
+		GetMmpGlobalDataPtr()->MmpDotNet->Initialized = GetMmpGlobalDataPtr()->MmpDotNet->PreHooked = FALSE;
 
     } while (false);
 
@@ -547,15 +554,15 @@ NTSTATUS CleanupLockHeld() {
 		}
 	}
 
-	if (--MmpGlobalDataPtr->ReferenceCount > 0) {
+	if (--GetMmpGlobalDataPtr()->ReferenceCount > 0) {
 		return STATUS_SUCCESS;
 	}
 
 	MmpTlsCleanup();
 	MmpCleanupDotNetHooks();
 
-	NtUnmapViewOfSection(NtCurrentProcess(), MmpGlobalDataPtr->BaseAddress);
-	MmpGlobalDataPtr = nullptr;
+	NtUnmapViewOfSection(NtCurrentProcess(), GetMmpGlobalDataPtr()->BaseAddress);
+	_MmpGlobalDataPtr = nullptr;
 	return STATUS_SUCCESS;
 }
 
@@ -566,7 +573,7 @@ NTSTATUS NTAPI MmCleanup() {
 
 	__try {
 
-		if (MmpGlobalDataPtr == nullptr) {
+		if (GetMmpGlobalDataPtr() == nullptr) {
 			status = STATUS_ACCESS_VIOLATION;
 			__leave;
 		}

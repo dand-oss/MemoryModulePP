@@ -14,5 +14,4 @@ LdrUnloadDllMemory
 LdrUnloadDllMemoryAndExitThread
 LdrQuerySystemMemoryModuleFeatures
 
-MmpGlobalDataPtr
 GetMmpGlobalDataPtr
