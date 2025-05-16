@@ -4,8 +4,12 @@
 #include <string>
 #pragma comment(lib,"ntdll.lib")
 
-static void DisplayStatus() {
+static int DisplayStatus() {
     const auto gdp = GetMmpGlobalDataPtr();
+    if ( !gdp ) {
+        printf("failed GetMmpGlobalDataPtr().\n");
+        return -1 ;
+    }
     printf(
         "\
 MemoryModulePP [Version %d.%d%s]\n\n\t\
@@ -28,6 +32,7 @@ LdrpHashTable = %p\n\n\
         gdp->MmpInvertedFunctionTable->LdrpInvertedFunctionTable,
         (PVOID)gdp->MmpLdrEntry->LdrpHashTable
     );
+    return 0 ;
 }
 
 static PVOID ReadDllFile(const std::string& FilePath) {
@@ -144,7 +149,10 @@ end:
 
 int main(int argc, char* argv[]) {
 
-    DisplayStatus();
+    // check MemoryModulePP initialization
+    if ( !DisplayStatus() ) {
+        return -1 ;
+    }
 
     std::string dll_path("a.dll"); // default
     dll_path = argc > 1 ?  argv[1] : ResolveWithModulePath(dll_path);
