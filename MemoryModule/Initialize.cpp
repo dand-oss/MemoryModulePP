@@ -6,7 +6,7 @@
 PMMP_GLOBAL_DATA MmpGlobalDataPtr;
 
 // DLL compliant access
-PMMP_GLOBAL_DATA NTAPI GetMmpGlobalDataPtr()
+extern "C" PMMP_GLOBAL_DATA NTAPI GetMmpGlobalDataPtr()
 {
    return MmpGlobalDataPtr;
 }

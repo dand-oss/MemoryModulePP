@@ -44,7 +44,7 @@ NTSTATUS NTAPI LdrMapDllMemory(
 	return STATUS_SUCCESS;
 }
 
-NTSTATUS NTAPI LdrLoadDllMemoryExW(
+extern "C" NTSTATUS NTAPI LdrLoadDllMemoryExW(
 	_Out_ HMEMORYMODULE* BaseAddress,
 	_Out_opt_ PVOID* LdrEntry,
 	_In_ DWORD dwFlags,
@@ -217,7 +217,7 @@ NTSTATUS NTAPI LdrLoadDllMemoryExW(
 	return status;
 }
 
-NTSTATUS NTAPI LdrUnloadDllMemory(_In_ HMEMORYMODULE BaseAddress) {
+extern "C" NTSTATUS NTAPI LdrUnloadDllMemory(_In_ HMEMORYMODULE BaseAddress) {
 	PLDR_DATA_TABLE_ENTRY CurEntry;
 	ULONG count = 0;
 	NTSTATUS status = STATUS_SUCCESS;
@@ -288,13 +288,14 @@ NTSTATUS NTAPI LdrUnloadDllMemory(_In_ HMEMORYMODULE BaseAddress) {
 	return status;
 }
 
+extern "C"
 DECLSPEC_NORETURN
 VOID NTAPI LdrUnloadDllMemoryAndExitThread(_In_ HMEMORYMODULE BaseAddress, _In_ DWORD dwExitCode) {
 	LdrUnloadDllMemory(BaseAddress);
 	RtlExitUserThread(dwExitCode);
 }
 
-NTSTATUS NTAPI LdrQuerySystemMemoryModuleFeatures(_Out_ PDWORD pFeatures) {
+extern "C" NTSTATUS NTAPI LdrQuerySystemMemoryModuleFeatures(_Out_ PDWORD pFeatures) {
 	NTSTATUS status = STATUS_SUCCESS;
 	__try {
 		*pFeatures = MmpGlobalDataPtr->MmpFeatures;
