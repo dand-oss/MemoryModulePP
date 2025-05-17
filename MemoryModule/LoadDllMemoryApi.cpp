@@ -29,7 +29,7 @@ extern "C" HMEMORYMODULE WINAPI LoadLibraryMemoryExA(
 	do {
 		if (DllBaseName) {
 			size = strlen(DllBaseName) + 1;
-			_DllName = (LPWSTR)RtlAllocateHeap(heap, 0, sizeof(WCHAR) * size);
+			_DllName = static_cast<LPWSTR>(RtlAllocateHeap(heap, 0, sizeof(WCHAR) * size));
 
 			if (!_DllName) {
 				RtlNtStatusToDosError(STATUS_INSUFFICIENT_RESOURCES);
@@ -41,7 +41,7 @@ extern "C" HMEMORYMODULE WINAPI LoadLibraryMemoryExA(
 
 		if (DllFullName) {
 			size = strlen(DllFullName) + 1;
-			_DllFullName = (LPWSTR)RtlAllocateHeap(heap, 0, sizeof(WCHAR) * size);
+			_DllFullName = static_cast<LPWSTR>(RtlAllocateHeap(heap, 0, sizeof(WCHAR) * size));
 
 			if (!_DllFullName) {
 				RtlNtStatusToDosError(STATUS_INSUFFICIENT_RESOURCES);

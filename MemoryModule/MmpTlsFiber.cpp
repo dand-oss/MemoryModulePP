@@ -41,7 +41,7 @@ DWORD WINAPI MmpReleasePostponedTlsWorker(PVOID) {
 
 					RtlAcquireSRWLockExclusive(&MmpGlobalDataPtr->MmpTls->MmpTlsListLock);
 
-					auto TlspMmpBlock = (PVOID*)iter->lpOldTlsVector->ModuleTlsData;
+					auto TlspMmpBlock = static_cast<PVOID*>(iter->lpOldTlsVector->ModuleTlsData);
 					auto entry = MmpGlobalDataPtr->MmpTls->MmpTlsList.Flink;
 					while (entry != &MmpGlobalDataPtr->MmpTls->MmpTlsList) {
 
@@ -91,7 +91,7 @@ VOID WINAPI MmpQueuePostponedTls(PMMP_TLSP_RECORD record) {
 	item.hThread = OpenThread(
 		THREAD_QUERY_INFORMATION,
 		FALSE,
-		(DWORD)(ULONG_PTR)NtCurrentThreadId()
+		static_cast<DWORD>(reinterpret_cast<ULONG_PTR>(NtCurrentThreadId()))
 	);
 
 	item.lpOldTlsVector = MmpAllocateTlsp();

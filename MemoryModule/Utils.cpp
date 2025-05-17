@@ -32,9 +32,9 @@ NTSTATUS NTAPI RtlResolveDllNameUnicodeString(
 				break;
 			}
 
-			BaseDllName->MaximumLength = (USHORT)(length * sizeof(WCHAR));
+			BaseDllName->MaximumLength = static_cast<USHORT>(length * sizeof(WCHAR));
 			BaseDllName->Length = BaseDllName->MaximumLength - sizeof(WCHAR);
-			BaseDllName->Buffer = (PWSTR)RtlAllocateHeap(heap, 0, BaseDllName->MaximumLength);
+			BaseDllName->Buffer = static_cast<PWSTR>(RtlAllocateHeap(heap, 0, BaseDllName->MaximumLength));
 			if (!BaseDllName->Buffer) {
 				status = STATUS_NO_MEMORY;
 				break;
@@ -47,13 +47,13 @@ NTSTATUS NTAPI RtlResolveDllNameUnicodeString(
 
 			BaseDllName->MaximumLength = (16 + 4 + 1) * sizeof(WCHAR); //hex(ULONG64) + ".dll" + '\0'
 			BaseDllName->Length = BaseDllName->MaximumLength - sizeof(WCHAR);
-			BaseDllName->Buffer = (PWSTR)RtlAllocateHeap(heap, 0, BaseDllName->MaximumLength);
+			BaseDllName->Buffer = static_cast<PWSTR>(RtlAllocateHeap(heap, 0, BaseDllName->MaximumLength));
 			if (!BaseDllName->Buffer) {
 				status = STATUS_NO_MEMORY;
 				break;
 			}
 
-			swprintf_s(BaseDllName->Buffer, BaseDllName->MaximumLength / sizeof(WCHAR), L"%016llX.DLL", ((ULONG64)random() << 32) | random());
+			swprintf_s(BaseDllName->Buffer, BaseDllName->MaximumLength / sizeof(WCHAR), L"%016llX.DLL", (static_cast<ULONG64>(random()) << 32) | random());
 		}
 
 		if (DllFullName && *DllFullName) {
@@ -78,9 +78,9 @@ NTSTATUS NTAPI RtlResolveDllNameUnicodeString(
 				break;
 			}
 
-			FullDllName->MaximumLength = (USHORT)(length * sizeof(WCHAR));
+			FullDllName->MaximumLength = static_cast<USHORT>(length * sizeof(WCHAR));
 			FullDllName->Length = FullDllName->MaximumLength - sizeof(WCHAR);
-			FullDllName->Buffer = (PWSTR)RtlAllocateHeap(heap, 0, FullDllName->MaximumLength);
+			FullDllName->Buffer = static_cast<PWSTR>(RtlAllocateHeap(heap, 0, FullDllName->MaximumLength));
 			if (!FullDllName->Buffer) {
 				status = STATUS_NO_MEMORY;
 				break;
@@ -91,7 +91,7 @@ NTSTATUS NTAPI RtlResolveDllNameUnicodeString(
 		else {
 			FullDllName->MaximumLength = (16 + 1 + 1) * sizeof(WCHAR) + BaseDllName->Length; //hex(ULONG64) + '\\' + BaseDllName + '\0'
 			FullDllName->Length = FullDllName->MaximumLength - sizeof(WCHAR);
-			FullDllName->Buffer = (PWSTR)RtlAllocateHeap(heap, 0, FullDllName->MaximumLength);
+			FullDllName->Buffer = static_cast<PWSTR>(RtlAllocateHeap(heap, 0, FullDllName->MaximumLength));
 			if (!FullDllName->Buffer) {
 				status = STATUS_NO_MEMORY;
 				break;
@@ -121,11 +121,11 @@ BOOL NTAPI LdrpExecuteTLS(PMEMORYMODULE module) {
 	PIMAGE_DATA_DIRECTORY directory = &headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS];
 	if (directory->VirtualAddress == 0) return TRUE;
 
-	tls = (PIMAGE_TLS_DIRECTORY)(codeBase + directory->VirtualAddress);
+	tls = reinterpret_cast<PIMAGE_TLS_DIRECTORY>(codeBase + directory->VirtualAddress);
 	callback = (PIMAGE_TLS_CALLBACK*)tls->AddressOfCallBacks;
 	if (callback) {
 		while (*callback) {
-			(*callback)((LPVOID)codeBase, DLL_PROCESS_ATTACH, nullptr);
+			(*callback)(static_cast<LPVOID>(codeBase), DLL_PROCESS_ATTACH, nullptr);
 			callback++;
 		}
 	}
@@ -138,7 +138,7 @@ BOOL NTAPI LdrpCallInitializers(PMEMORYMODULE module, DWORD dwReason) {
 	if (headers->OptionalHeader.AddressOfEntryPoint) {
 		__try {
 			// notify library about attaching to process
-			if (((PLDR_INIT_ROUTINE)(module->codeBase + headers->OptionalHeader.AddressOfEntryPoint))((HINSTANCE)module->codeBase, dwReason, 0)) {
+			if ((reinterpret_cast<PLDR_INIT_ROUTINE>(module->codeBase + headers->OptionalHeader.AddressOfEntryPoint))(reinterpret_cast<HINSTANCE>(module->codeBase), dwReason, 0)) {
 				module->initialized = TRUE;
 
 				if (dwReason == DLL_PROCESS_ATTACH) {
@@ -169,7 +169,7 @@ SIZE_T NTAPI _RtlCompareMemory(
 	const VOID* Source1,
 	const VOID* Source2,
 	SIZE_T     Length) {
-	return decltype(&_RtlCompareMemory)(GetProcAddress((HMODULE)MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry->DllBase, "RtlCompareMemory"))(Source1, Source2, Length);
+	return reinterpret_cast<decltype(&_RtlCompareMemory)>(GetProcAddress(static_cast<HMODULE>(MmpGlobalDataPtr->MmpBaseAddressIndex->NtdllLdrEntry->DllBase), "RtlCompareMemory"))(Source1, Source2, Length);
 }
 #define RtlCompareMemory _RtlCompareMemory
 #endif
@@ -211,8 +211,8 @@ NTSTATUS NTAPI RtlFindMemoryBlockFromModuleSection(
 			if (headers) {
 				section = IMAGE_FIRST_SECTION(headers);
 				for (WORD i = 0; i < headers->FileHeader.NumberOfSections; ++i) {
-					if (!_strnicmp(SectionName, (LPCSTR)section->Name, 8)) {
-						SearchContext->Result = (LPBYTE)ModuleHandle + section->VirtualAddress;
+					if (!_strnicmp(SectionName, reinterpret_cast<LPCSTR>(section->Name), 8)) {
+						SearchContext->Result = reinterpret_cast<LPBYTE>(ModuleHandle) + section->VirtualAddress;
 						SearchContext->MemoryBlockSize = section->Misc.VirtualSize;
 						break;
 					}
@@ -269,14 +269,14 @@ NTSTATUS NTAPI RtlFindMemoryBlockFromModuleSection(
 
 
 static WORD CalcCheckSum(DWORD StartValue, LPVOID BaseAddress, DWORD WordCount) {
-	LPWORD Ptr = (LPWORD)BaseAddress;
+	LPWORD Ptr = static_cast<LPWORD>(BaseAddress);
 	DWORD Sum = StartValue;
 	for (DWORD i = 0; i < WordCount; i++) {
 		Sum += *Ptr;
 		if (HIWORD(Sum) != 0) Sum = LOWORD(Sum) + HIWORD(Sum);
 		Ptr++;
 	}
-	return (WORD)(LOWORD(Sum) + HIWORD(Sum));
+	return static_cast<WORD>(LOWORD(Sum) + HIWORD(Sum));
 }
 
 static BOOLEAN CheckSumBufferedFile(LPVOID BaseAddress, DWORD BufferLength, DWORD CheckSum) {
@@ -314,7 +314,7 @@ BOOLEAN NTAPI RtlIsValidImageBuffer(
 
 		switch (headers.nt->OptionalHeader.Magic) {
 		case IMAGE_NT_OPTIONAL_HDR32_MAGIC:
-			sections = PIMAGE_SECTION_HEADER((char*)&headers.nt32->OptionalHeader + headers.nt32->FileHeader.SizeOfOptionalHeader);
+			sections = PIMAGE_SECTION_HEADER(reinterpret_cast<char*>(&headers.nt32->OptionalHeader) + headers.nt32->FileHeader.SizeOfOptionalHeader);
 			SizeofImage = headers.nt32->OptionalHeader.SizeOfHeaders;
 			ProbeForRead(sections, headers.nt32->FileHeader.NumberOfSections * sizeof(IMAGE_SECTION_HEADER));
 			for (WORD i = 0; i < headers.nt32->FileHeader.NumberOfSections; ++i, ++sections)
@@ -327,7 +327,7 @@ BOOLEAN NTAPI RtlIsValidImageBuffer(
 
 			break;
 		case IMAGE_NT_OPTIONAL_HDR64_MAGIC:
-			sections = PIMAGE_SECTION_HEADER((char*)&headers.nt64->OptionalHeader + headers.nt64->FileHeader.SizeOfOptionalHeader);
+			sections = PIMAGE_SECTION_HEADER(reinterpret_cast<char*>(&headers.nt64->OptionalHeader) + headers.nt64->FileHeader.SizeOfOptionalHeader);
 			SizeofImage = headers.nt64->OptionalHeader.SizeOfHeaders;
 			ProbeForRead(sections, headers.nt64->FileHeader.NumberOfSections * sizeof(IMAGE_SECTION_HEADER));
 			for (WORD i = 0; i < headers.nt64->FileHeader.NumberOfSections; ++i, ++sections)
@@ -346,7 +346,7 @@ BOOLEAN NTAPI RtlIsValidImageBuffer(
 
 		if (!CheckSum)return TRUE;
 
-		result = CheckSumBufferedFile(Buffer, (DWORD)SizeofImage, CheckSum);
+		result = CheckSumBufferedFile(Buffer, static_cast<DWORD>(SizeofImage), CheckSum);
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER) {
 		SetLastError(RtlNtStatusToDosError(GetExceptionCode()));
@@ -424,7 +424,7 @@ int NTAPI RtlCaptureImageExceptionValues(PVOID BaseAddress, PDWORD SEHandlerTabl
 	}
 
 	//get seh table and count
-	pLoadConfigDirectory = (decltype(pLoadConfigDirectory))RtlImageDirectoryEntryToData(BaseAddress, TRUE, IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG, &Size);
+	pLoadConfigDirectory = static_cast<decltype(pLoadConfigDirectory)>(RtlImageDirectoryEntryToData(BaseAddress, TRUE, IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG, &Size));
 	if (pLoadConfigDirectory) {
 		if (Size == 0x40 && pLoadConfigDirectory->Size >= 0x48u) {
 			if (pLoadConfigDirectory->SEHandlerTable && pLoadConfigDirectory->SEHandlerCount) {
@@ -435,7 +435,7 @@ int NTAPI RtlCaptureImageExceptionValues(PVOID BaseAddress, PDWORD SEHandlerTabl
 	}
 
 	//is .net core ?
-	pCor20 = (decltype(pCor20))RtlImageDirectoryEntryToData(BaseAddress, TRUE, IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, &Size);
+	pCor20 = static_cast<decltype(pCor20)>(RtlImageDirectoryEntryToData(BaseAddress, TRUE, IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, &Size));
 	*SEHandlerTable = *SEHandlerCount = ((pCor20 && pCor20->Flags & 1) ? -1 : 0);
 	return 0;
 }

@@ -29,7 +29,7 @@ BOOL MmpIsMemoryModuleFileName(
         PLDR_DATA_TABLE_ENTRY CurEntry = CONTAINING_RECORD(entry, LDR_DATA_TABLE_ENTRY, LDR_DATA_TABLE_ENTRY::InLoadOrderLinks);
         if (!wcsncmp(CurEntry->FullDllName.Buffer, lpFileName, CurEntry->FullDllName.Length) &&
             wcslen(lpFileName) * 2 == CurEntry->FullDllName.Length) {
-            result = IsValidMemoryModuleHandle((HMODULE)CurEntry->DllBase);
+            result = IsValidMemoryModuleHandle(static_cast<HMODULE>(CurEntry->DllBase));
             if (result) {
                 if (LdrEntry) {
                     __try {
@@ -54,7 +54,7 @@ VOID MmpInsertHandleEntry(
     _In_ HANDLE hObject,
     _In_ PVOID value,
     _In_ BOOL bImageMapping = FALSE) {
-    auto entry = (PMMP_FAKE_HANDLE_LIST_ENTRY)RtlAllocateHeap(RtlProcessHeap(), HEAP_ZERO_MEMORY, sizeof(MMP_FAKE_HANDLE_LIST_ENTRY));
+    auto entry = static_cast<PMMP_FAKE_HANDLE_LIST_ENTRY>(RtlAllocateHeap(RtlProcessHeap(), HEAP_ZERO_MEMORY, sizeof(MMP_FAKE_HANDLE_LIST_ENTRY)));
     entry->hObject = hObject;
     entry->value = value;
     entry->bImageMapping = bImageMapping;
@@ -126,7 +126,7 @@ BOOL WINAPI HookGetFileInformationByHandle(
         RtlZeroMemory(lpFileInformation, sizeof(BY_HANDLE_FILE_INFORMATION));
 
         auto entry = (PLDR_DATA_TABLE_ENTRY)iter->value;
-        auto module = MapMemoryModuleHandle((HMEMORYMODULE)entry->DllBase);
+        auto module = MapMemoryModuleHandle(static_cast<HMEMORYMODULE>(entry->DllBase));
 
         lpFileInformation->ftCreationTime = lpFileInformation->ftLastAccessTime = lpFileInformation->ftLastWriteTime = MmpGlobalDataPtr->MmpDotNet->AssemblyTimes;
         lpFileInformation->nFileSizeLow = module->dwImageFileSize;
@@ -144,7 +144,7 @@ BOOL WINAPI HookGetFileInformationByHandle(
 BOOL WINAPI HookGetFileAttributesExW(
     _In_ LPCWSTR lpFileName,
     _In_ GET_FILEEX_INFO_LEVELS fInfoLevelId,
-    _Out_writes_bytes_(sizeof(WIN32_FILE_ATTRIBUTE_DATA)) LPVOID lpFileInformation) {
+    _Out_writes_bytes_(static_cast<sizeof>(WIN32_FILE_ATTRIBUTE_DATA)) LPVOID lpFileInformation) {
 
     PLDR_DATA_TABLE_ENTRY entry;
     if (MmpIsMemoryModuleFileName(lpFileName, &entry)) {
@@ -154,8 +154,8 @@ BOOL WINAPI HookGetFileAttributesExW(
                 sizeof(WIN32_FILE_ATTRIBUTE_DATA)
             );
 
-            LPWIN32_FILE_ATTRIBUTE_DATA data = (LPWIN32_FILE_ATTRIBUTE_DATA)lpFileInformation;
-            auto module = MapMemoryModuleHandle((HMEMORYMODULE)entry->DllBase);
+            LPWIN32_FILE_ATTRIBUTE_DATA data = static_cast<LPWIN32_FILE_ATTRIBUTE_DATA>(lpFileInformation);
+            auto module = MapMemoryModuleHandle(static_cast<HMEMORYMODULE>(entry->DllBase));
 
             data->ftCreationTime = data->ftLastAccessTime = data->ftLastWriteTime = MmpGlobalDataPtr->MmpDotNet->AssemblyTimes;
             data->nFileSizeLow = module->dwImageFileSize;
@@ -181,8 +181,8 @@ DWORD WINAPI HookGetFileSize(
     if (iter) {
         if (lpFileSizeHigh)*lpFileSizeHigh = 0;
 
-        auto entry = (PLDR_DATA_TABLE_ENTRY)iter->value;
-        auto module = MapMemoryModuleHandle((HMEMORYMODULE)entry->DllBase);
+        auto entry = static_cast<PLDR_DATA_TABLE_ENTRY>(iter->value);
+        auto module = MapMemoryModuleHandle(static_cast<HMEMORYMODULE>(entry->DllBase));
 
         return module->dwImageFileSize;
     }
@@ -201,8 +201,8 @@ BOOL WINAPI HookGetFileSizeEx(
 
     auto iter = MmpFindHandleEntry(hFile);
     if (iter) {
-        auto entry = (PLDR_DATA_TABLE_ENTRY)iter->value;
-        auto module = MapMemoryModuleHandle((HMEMORYMODULE)entry->DllBase);
+        auto entry = static_cast<PLDR_DATA_TABLE_ENTRY>(iter->value);
+        auto module = MapMemoryModuleHandle(static_cast<HMEMORYMODULE>(entry->DllBase));
 
         lpFileSize->QuadPart = module->dwImageFileSize;
         return TRUE;
@@ -254,7 +254,7 @@ LPVOID WINAPI HookMapViewOfFileEx(
     if (iter) {
         HMEMORYMODULE hModule = nullptr;
         auto entry = (PLDR_DATA_TABLE_ENTRY)iter->value;
-        auto pModule = MapMemoryModuleHandle((HMEMORYMODULE)entry->DllBase);
+        auto pModule = MapMemoryModuleHandle(static_cast<HMEMORYMODULE>(entry->DllBase));
         if (pModule) {
             if (iter->bImageMapping) {
                 MemoryLoadLibrary(&hModule, pModule->lpReserved, pModule->dwImageFileSize);
@@ -338,10 +338,10 @@ HRESULT WINAPI HookGetFileVersion(
             auto dir = headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR];
             if (!dir.Size || !dir.VirtualAddress)__leave;
 
-            PIMAGE_COR20_HEADER cor2 = PIMAGE_COR20_HEADER(LPBYTE(entry->DllBase) + dir.VirtualAddress);
+            PIMAGE_COR20_HEADER cor2 = PIMAGE_COR20_HEADER(static_cast<LPBYTE>(entry->DllBase) + dir.VirtualAddress);
             if (!cor2->MetaData.Size || !cor2->MetaData.VirtualAddress) __leave;
 
-            PCOR20_METADATA meta = PCOR20_METADATA(LPBYTE(entry->DllBase) + cor2->MetaData.VirtualAddress);
+            PCOR20_METADATA meta = PCOR20_METADATA(static_cast<LPBYTE>(entry->DllBase) + cor2->MetaData.VirtualAddress);
             if (dwLength)*dwLength = meta->VersionLength;
             if (cchBuffer < meta->VersionLength)return 0x8007007A;
             
