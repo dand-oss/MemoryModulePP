@@ -97,8 +97,7 @@
         __NT__;WIN32_LEAN_AND_MEAN=1;NOMINMAX=1;NOGDICAPMASKS=1;NOATOM=1;NOSOUND=1;NOCOMM=1;
         NOKANJI=1;NOHELP=1;NOMCX=1;_AMD64_;SOMUX_EXPORTS;%(PreprocessorDefinitions)
       </PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>
-        I:\af\ports\vs17-64\docopt\include;
+      <AdditionalIncludeDirectories>i:\ports\repo\memorymodulepp\3rdparty\phnt\include;I:\af\ports\vs17-64\docopt\include;
         I:\af\appsmith\b\vs17-64\winglue-devenv-Release;
         I:\src\winglue\h;I:\src\winglue;I:\src\winglue\objstore;
         I:\src\winglue\common;I:\src\winglue\afcore;I:\src\winglue\utils;

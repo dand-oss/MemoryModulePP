@@ -29,3 +29,9 @@ target_sources(${libname} PRIVATE
 set_property (
     SOURCE ${DETOURS_SOURCE}/uimports.cpp
     APPEND PROPERTY HEADER_FILE_ONLY true)
+
+# Install PHNT headers
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/phnt/include/"
+        DESTINATION include
+        FILES_MATCHING PATTERN "*.h")
+

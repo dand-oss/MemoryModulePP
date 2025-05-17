@@ -16,6 +16,7 @@ SET(CMAKE_DEBUG_POSTFIX _d)
 
 # build spec done in subdirectories
 add_subdirectory(3rdparty)
+include_directories(${CMAKE_SOURCE_DIR}/3rdparty/phnt/include)
 add_subdirectory(a)
 add_subdirectory(MemoryModule)
 add_subdirectory(test)
