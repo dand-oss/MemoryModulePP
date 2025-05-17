@@ -36,6 +36,7 @@ set(common_sources
 )
 
 set(common_public_headers
+    stdafx.h
     BaseAddressIndex.h
     ImportTable.h
     Initialize.h
