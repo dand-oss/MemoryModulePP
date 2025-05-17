@@ -27,7 +27,7 @@ static VOID RtlpInsertInvertedFunctionTable(
 			}
 		}
 
-		FunctionTable = (decltype(FunctionTable))RtlImageDirectoryEntryToData(ImageBase, TRUE, IMAGE_DIRECTORY_ENTRY_EXCEPTION, &SizeOfTable);
+		FunctionTable = reinterpret_cast<decltype(FunctionTable)>(RtlImageDirectoryEntryToData(ImageBase, TRUE, IMAGE_DIRECTORY_ENTRY_EXCEPTION, &SizeOfTable));
 		InvertedTable->Entries[Index].ExceptionDirectory = FunctionTable;
 		InvertedTable->Entries[Index].ImageBase = ImageBase;
 		InvertedTable->Entries[Index].ImageSize = SizeOfImage;
@@ -50,7 +50,7 @@ static VOID RtlpInsertInvertedFunctionTable(
 	}
 	while (Index < InvertedTable->Count) {
 		if (ImageBase < (IsWin8OrGreater ?
-			((PRTL_INVERTED_FUNCTION_TABLE_ENTRY_64)&InvertedTable->Entries[Index])->ImageBase :
+			(reinterpret_cast<PRTL_INVERTED_FUNCTION_TABLE_ENTRY_64>(&InvertedTable->Entries[Index])->ImageBase) :
 			InvertedTable->Entries[Index].ImageBase))
 			break;
 		Index++;
@@ -62,7 +62,7 @@ static VOID RtlpInsertInvertedFunctionTable(
 		}
 		else {
 			RtlMoveMemory(&InvertedTable->Entries[Index].NextEntrySEHandlerTableEncoded,
-				Index ? &InvertedTable->Entries[Index - 1].NextEntrySEHandlerTableEncoded : (PVOID)&InvertedTable->NextEntrySEHandlerTableEncoded,
+				Index ? &InvertedTable->Entries[Index - 1].NextEntrySEHandlerTableEncoded : static_cast<PVOID>(&InvertedTable->NextEntrySEHandlerTableEncoded),
 				(InvertedTable->Count - Index) * sizeof(RTL_INVERTED_FUNCTION_TABLE_ENTRY));
 		}
 	}
@@ -70,15 +70,15 @@ static VOID RtlpInsertInvertedFunctionTable(
 	RtlCaptureImageExceptionValues(ImageBase, &ptr, &count);
 	if (IsWin8OrGreater) {
 		//memory layout is same as x64
-		PRTL_INVERTED_FUNCTION_TABLE_ENTRY_64 entry = (decltype(entry))&InvertedTable->Entries[Index];
-		entry->ExceptionDirectory = (PIMAGE_RUNTIME_FUNCTION_ENTRY)RtlEncodeSystemPointer((PVOID)ptr);
+		PRTL_INVERTED_FUNCTION_TABLE_ENTRY_64 entry = reinterpret_cast<decltype(entry)>(&InvertedTable->Entries[Index]);
+		entry->ExceptionDirectory = reinterpret_cast<PIMAGE_RUNTIME_FUNCTION_ENTRY>(RtlEncodeSystemPointer(reinterpret_cast<PVOID>(ptr)));
 		entry->ExceptionDirectorySize = count;
 		entry->ImageBase = ImageBase;
 		entry->ImageSize = SizeOfImage;
 	}
 	else {
-		if (Index) InvertedTable->Entries[Index - 1].NextEntrySEHandlerTableEncoded = RtlEncodeSystemPointer((PVOID)ptr);
-		else InvertedTable->NextEntrySEHandlerTableEncoded = (DWORD)RtlEncodeSystemPointer((PVOID)ptr);
+		if (Index) InvertedTable->Entries[Index - 1].NextEntrySEHandlerTableEncoded = RtlEncodeSystemPointer(reinterpret_cast<PVOID>(ptr));
+		else InvertedTable->NextEntrySEHandlerTableEncoded = reinterpret_cast<DWORD>(RtlEncodeSystemPointer(reinterpret_cast<PVOID>(ptr)));
 		InvertedTable->Entries[Index].ImageBase = ImageBase;
 		InvertedTable->Entries[Index].ImageSize = SizeOfImage;
 		InvertedTable->Entries[Index].SEHandlerCount = count;
@@ -100,7 +100,7 @@ static VOID RtlpRemoveInvertedFunctionTable(
 	CurrentSize = InvertedTable->Count;
 	for (Index = 0; Index < CurrentSize; Index += 1) {
 		if (ImageBase == (IsWin8OrGreater ?
-			((PRTL_INVERTED_FUNCTION_TABLE_ENTRY_64)&InvertedTable->Entries[Index])->ImageBase :
+			(reinterpret_cast<PRTL_INVERTED_FUNCTION_TABLE_ENTRY_64>(&InvertedTable->Entries[Index])->ImageBase) :
 			InvertedTable->Entries[Index].ImageBase))
 			break;
 	}
@@ -119,7 +119,7 @@ static VOID RtlpRemoveInvertedFunctionTable(
 			}
 			else {
 				RtlMoveMemory(
-					Index ? &InvertedTable->Entries[Index - 1].NextEntrySEHandlerTableEncoded : (PVOID)&InvertedTable->NextEntrySEHandlerTableEncoded,
+					Index ? &InvertedTable->Entries[Index - 1].NextEntrySEHandlerTableEncoded : static_cast<PVOID>(&InvertedTable->NextEntrySEHandlerTableEncoded),
 					&InvertedTable->Entries[Index].NextEntrySEHandlerTableEncoded,
 					(CurrentSize - Index) * sizeof(RTL_INVERTED_FUNCTION_TABLE_ENTRY));
 			}
