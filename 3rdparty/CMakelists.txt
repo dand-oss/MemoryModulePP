@@ -39,6 +39,12 @@ install(TARGETS ${libname}
     INCLUDES DESTINATION include
 )
 
+install(EXPORT DetoursTargets
+    FILE DetoursTargets.cmake
+    NAMESPACE MemoryModulePP::
+    DESTINATION lib/cmake/MemoryModulePP
+)
+
 # Install PHNT headers
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty/phnt/include/"
         DESTINATION include
