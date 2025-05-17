@@ -1,0 +1,248 @@
+diff --git i/winhttp/winhttp.cpp w/winhttp/winhttp.cpp
+index d032afe..f37435b 100644
+--- i/winhttp/winhttp.cpp
++++ w/winhttp/winhttp.cpp
+@@ -12,22 +12,95 @@
+ #include <vector>
+ #include <../MemoryModule/LoadDllMemoryApi.h>
+ 
+-// declare winhttp functions we use
+-typedef HINTERNET(WINAPI* MSVC$WinHttpOpen)(LPCWSTR, DWORD, LPCWSTR, LPCWSTR, DWORD);
+-typedef HINTERNET(WINAPI* MSVC$WinHttpConnect)(HINTERNET, LPCWSTR, INTERNET_PORT, DWORD);
+-typedef HINTERNET(WINAPI* MSVC$WinHttpOpenRequest)(HINTERNET, LPCWSTR, LPCWSTR, LPCWSTR, LPCWSTR, LPCWSTR*, DWORD);
+-typedef BOOL(WINAPI* MSVC$WinHttpSendRequest)(HINTERNET, LPCWSTR, DWORD, LPVOID, DWORD, DWORD, DWORD_PTR);
+-typedef BOOL(WINAPI* MSVC$WinHttpReceiveResponse)(HINTERNET, LPVOID);
+-typedef BOOL(WINAPI* MSVC$WinHttpQueryDataAvailable)(HINTERNET, LPDWORD);
+-typedef BOOL(WINAPI* MSVC$WinHttpReadData)(HINTERNET, LPVOID, DWORD, LPDWORD);
+-typedef BOOL(WINAPI* MSVC$WinHttpCloseHandle)(HINTERNET);
++// Struct to manage WinHTTP function pointers with instance-based lazy loading
++struct WinHttpAPI {
++private:
++    HMODULE hWinhttp = nullptr; // DLL handle
++    LPVOID buffer = nullptr;   // Memory buffer for DLL
++    std::filesystem::path dllPath; // Path to DLL
+ 
+-template <class TT>
+-TT GetProcAddress(HMODULE module_handle, LPCSTR proc_name)
+-{
+-    return reinterpret_cast<TT>(
+-        ::GetProcAddress(module_handle, proc_name));
+-}
++    // Instance function pointers
++    HINTERNET(WINAPI *fnWinHttpOpen)(LPCWSTR, DWORD, LPCWSTR, LPCWSTR, DWORD) = nullptr;
++    HINTERNET(WINAPI *fnWinHttpConnect)(HINTERNET, LPCWSTR, INTERNET_PORT, DWORD) = nullptr;
++    HINTERNET(WINAPI *fnWinHttpOpenRequest)(HINTERNET, LPCWSTR, LPCWSTR, LPCWSTR, LPCWSTR, LPCWSTR*, DWORD) = nullptr;
++    BOOL(WINAPI *fnWinHttpSendRequest)(HINTERNET, LPCWSTR, DWORD, LPVOID, DWORD, DWORD, DWORD_PTR) = nullptr;
++    BOOL(WINAPI *fnWinHttpReceiveResponse)(HINTERNET, LPVOID) = nullptr;
++    BOOL(WINAPI *fnWinHttpQueryDataAvailable)(HINTERNET, LPDWORD) = nullptr;
++    BOOL(WINAPI *fnWinHttpReadData)(HINTERNET, LPVOID, DWORD, LPDWORD) = nullptr;
++    BOOL(WINAPI *fnWinHttpCloseHandle)(HINTERNET) = nullptr;
++
++    // Template to get function pointer
++    template <typename T>
++    T GetProc(LPCSTR proc_name, T& cached) {
++        if (!cached) {
++            if (!hWinhttp) {
++                // Load DLL if not already loaded
++                auto result = ReadDllToMemory(dllPath);
++                if (!result) {
++                    const auto errorMsg = std::system_category().message(result.error().value());
++                    const std::wstring wErrorMsg(errorMsg.begin(), errorMsg.end());
++                    std::wcout << std::format(L"Failed to load DLL: {}\n", wErrorMsg);
++                    return nullptr;
++                }
++                buffer = *result;
++                hWinhttp = LoadLibraryMemory(buffer);
++                if (!hWinhttp) {
++                    std::print("LoadLibraryMemory failed.\n");
++                    VirtualFree(buffer, 0, MEM_RELEASE);
++                    buffer = nullptr;
++                    return nullptr;
++                }
++            }
++            cached = reinterpret_cast<T>(::GetProcAddress(hWinhttp, proc_name));
++            if (!cached) {
++                std::print("Failed to get function: {}\n", proc_name);
++            }
++        }
++        return cached;
++    }
++
++public:
++    explicit WinHttpAPI(const std::filesystem::path& path) : dllPath(path) {}
++
++    ~WinHttpAPI() {
++        if (buffer) {
++            VirtualFree(buffer, 0, MEM_RELEASE);
++        }
++    }
++
++    // Function wrappers with lazy loading
++    HINTERNET WinHttpOpen(LPCWSTR pszAgentW, DWORD dwAccessType, LPCWSTR pszProxyW, LPCWSTR pszProxyBypassW, DWORD dwFlags) {
++        return GetProc("WinHttpOpen", fnWinHttpOpen) ? fnWinHttpOpen(pszAgentW, dwAccessType, pszProxyW, pszProxyBypassW, dwFlags) : nullptr;
++    }
++
++    HINTERNET WinHttpConnect(HINTERNET hSession, LPCWSTR pswzServerName, INTERNET_PORT nServerPort, DWORD dwReserved) {
++        return GetProc("WinHttpConnect", fnWinHttpConnect) ? fnWinHttpConnect(hSession, pswzServerName, nServerPort, dwReserved) : nullptr;
++    }
++
++    HINTERNET WinHttpOpenRequest(HINTERNET hConnect, LPCWSTR pwszVerb, LPCWSTR pwszObjectName, LPCWSTR pwszVersion, LPCWSTR pwszReferrer, LPCWSTR* ppwszAcceptTypes, DWORD dwFlags) {
++        return GetProc("WinHttpOpenRequest", fnWinHttpOpenRequest) ? fnWinHttpOpenRequest(hConnect, pwszVerb, pwszObjectName, pwszVersion, pwszReferrer, ppwszAcceptTypes, dwFlags) : nullptr;
++    }
++
++    BOOL WinHttpSendRequest(HINTERNET hRequest, LPCWSTR pwszHeaders, DWORD dwHeadersLength, LPVOID lpOptional, DWORD dwOptionalLength, DWORD dwTotalLength, DWORD_PTR dwContext) {
++        return GetProc("WinHttpSendRequest", fnWinHttpSendRequest) ? fnWinHttpSendRequest(hRequest, pwszHeaders, dwHeadersLength, lpOptional, dwOptionalLength, dwTotalLength, dwContext) : FALSE;
++    }
++
++    BOOL WinHttpReceiveResponse(HINTERNET hRequest, LPVOID lpReserved) {
++        return GetProc("WinHttpReceiveResponse", fnWinHttpReceiveResponse) ? fnWinHttpReceiveResponse(hRequest, lpReserved) : FALSE;
++    }
++
++    BOOL WinHttpQueryDataAvailable(HINTERNET hRequest, LPDWORD lpdwNumberOfBytesAvailable) {
++        return GetProc("WinHttpQueryDataAvailable", fnWinHttpQueryDataAvailable) ? fnWinHttpQueryDataAvailable(hRequest, lpdwNumberOfBytesAvailable) : FALSE;
++    }
++
++    BOOL WinHttpReadData(HINTERNET hRequest, LPVOID lpBuffer, DWORD dwNumberOfBytesToRead, LPDWORD lpdwNumberOfBytesRead) {
++        return GetProc("WinHttpReadData", fnWinHttpReadData) ? fnWinHttpReadData(hRequest, lpBuffer, dwNumberOfBytesToRead, lpdwNumberOfBytesRead) : FALSE;
++    }
++
++    BOOL WinHttpCloseHandle(HINTERNET hInternet) {
++        return GetProc("WinHttpCloseHandle", fnWinHttpCloseHandle) ? fnWinHttpCloseHandle(hInternet) : FALSE;
++    }
++};
+ 
+ // Returns a pointer to the allocated buffer containing the DLL data or an error code
+ [[nodiscard]] std::expected<LPVOID, std::error_code>
+@@ -91,61 +164,22 @@ ReadDllToMemory(const std::filesystem::path& filePath) noexcept {
+ 
+ int test(const std::filesystem::path& dllFullPath)
+ {
+-    // Read DLL directly into executable buffer
+-    const auto result = ReadDllToMemory(dllFullPath);
+-    LPVOID buffer = nullptr; // Track buffer for cleanup
+-    if (!result) {
+-        const auto errorMsg = std::system_category().message(result.error().value());
+-        const std::wstring wErrorMsg(errorMsg.begin(), errorMsg.end());
+-        std::wcout << std::format(L"Failed to load DLL: {}\n", wErrorMsg);
+-        return -1;
+-    }
+-
+-    buffer = *result;
+-    std::wcout << std::format(L"Successfully loaded {} into buffer at: {:#x}\n",
+-        dllFullPath.wstring(),
+-        reinterpret_cast<std::uintptr_t>(buffer));
++    std::wcout << std::format(L"Using DLL at: {}\n", dllFullPath.wstring());
+ 
+     HINTERNET hSession = nullptr, hConnect = nullptr, hRequest = nullptr;
+ 
+-    // Load the buffer
+-    const auto hWinhttp = LoadLibraryMemory(buffer);
+-    if (!hWinhttp) {
+-        std::print("LoadLibraryMemory failed.\n");
+-        VirtualFree(buffer, 0, MEM_RELEASE);
+-        return -1;
+-    }
++    // Initialize API with DLL path
++    WinHttpAPI api(dllFullPath);
+ 
+-    // Get winhttp functions
+-    auto win32_WinHttpOpen = GetProcAddress<MSVC$WinHttpOpen>(hWinhttp, "WinHttpOpen");
+-    auto win32_WinHttpConnect = GetProcAddress<MSVC$WinHttpConnect>(hWinhttp, "WinHttpConnect");
+-    auto win32_WinHttpOpenRequest = GetProcAddress<MSVC$WinHttpOpenRequest>(hWinhttp, "WinHttpOpenRequest");
+-    auto win32_WinHttpSendRequest = GetProcAddress<MSVC$WinHttpSendRequest>(hWinhttp, "WinHttpSendRequest");
+-    auto win32_WinHttpReceiveResponse = GetProcAddress<MSVC$WinHttpReceiveResponse>(hWinhttp, "WinHttpReceiveResponse");
+-    auto win32_WinHttpQueryDataAvailable = GetProcAddress<MSVC$WinHttpQueryDataAvailable>(hWinhttp, "WinHttpQueryDataAvailable");
+-    auto win32_WinHttpReadData = GetProcAddress<MSVC$WinHttpReadData>(hWinhttp, "WinHttpReadData");
+-    auto win32_WinHttpCloseHandle = GetProcAddress<MSVC$WinHttpCloseHandle>(hWinhttp, "WinHttpCloseHandle");
+-
+-    // Check if function pointers are valid
+-    if (!win32_WinHttpOpen || !win32_WinHttpConnect || !win32_WinHttpOpenRequest ||
+-        !win32_WinHttpSendRequest || !win32_WinHttpReceiveResponse ||
+-        !win32_WinHttpQueryDataAvailable || !win32_WinHttpReadData ||
+-        !win32_WinHttpCloseHandle) {
+-        std::print("Failed to get WinHTTP function pointers.\n");
+-        VirtualFree(buffer, 0, MEM_RELEASE);
+-        return -1;
+-    }
+-
+-    // Clean up lambda defined after function pointers
+-    const auto cleanup = [hRequest, hConnect, hSession, buffer, win32_WinHttpCloseHandle]() {
+-        if (hRequest) win32_WinHttpCloseHandle(hRequest);
+-        if (hConnect) win32_WinHttpCloseHandle(hConnect);
+-        if (hSession) win32_WinHttpCloseHandle(hSession);
+-        VirtualFree(buffer, 0, MEM_RELEASE);
++    // Clean up lambda
++    const auto cleanup = [hRequest, hConnect, hSession, &api]() {
++        if (hRequest) api.WinHttpCloseHandle(hRequest);
++        if (hConnect) api.WinHttpCloseHandle(hConnect);
++        if (hSession) api.WinHttpCloseHandle(hSession);
+     };
+ 
+     // Initialize WinHTTP session
+-    hSession = win32_WinHttpOpen(
++    hSession = api.WinHttpOpen(
+         L"A WinHTTP Example Program/1.0",
+         WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+         WINHTTP_NO_PROXY_NAME,
+@@ -163,7 +197,7 @@ int test(const std::filesystem::path& dllFullPath)
+     WCHAR objectName[] = L"/";
+ 
+     // Connect to HTTP server
+-    hConnect = win32_WinHttpConnect(
++    hConnect = api.WinHttpConnect(
+         hSession,
+         serverName,
+         serverPort,
+@@ -175,7 +209,7 @@ int test(const std::filesystem::path& dllFullPath)
+     }
+ 
+     // Create HTTP GET request
+-    hRequest = win32_WinHttpOpenRequest(
++    hRequest = api.WinHttpOpenRequest(
+         hConnect,
+         L"GET",
+         objectName,
+@@ -190,7 +224,7 @@ int test(const std::filesystem::path& dllFullPath)
+     }
+ 
+     // Send HTTP request
+-    auto bResults = win32_WinHttpSendRequest(
++    auto bResults = api.WinHttpSendRequest(
+         hRequest,
+         WINHTTP_NO_ADDITIONAL_HEADERS,
+         0,
+@@ -205,7 +239,7 @@ int test(const std::filesystem::path& dllFullPath)
+     }
+ 
+     // End the HTTP request
+-    bResults = win32_WinHttpReceiveResponse(hRequest, nullptr);
++    bResults = api.WinHttpReceiveResponse(hRequest, nullptr);
+     if (!bResults) {
+         std::print("Error {} in WinHttpReceiveResponse.\n", GetLastError());
+         cleanup();
+@@ -217,7 +251,7 @@ int test(const std::filesystem::path& dllFullPath)
+     do {
+         // Check for available data
+         dwSize = 0;
+-        if (!win32_WinHttpQueryDataAvailable(hRequest, &dwSize)) {
++        if (!api.WinHttpQueryDataAvailable(hRequest, &dwSize)) {
+             std::print("Error {} in WinHttpQueryDataAvailable.\n", GetLastError());
+             cleanup();
+             return -1;
+@@ -229,7 +263,7 @@ int test(const std::filesystem::path& dllFullPath)
+         // Read the response data
+         ZeroMemory(pszOutBuffer.data(), dwSize + 1);
+         DWORD dwDownloaded = 0;
+-        if (!win32_WinHttpReadData(hRequest, pszOutBuffer.data(), dwSize, &dwDownloaded)) {
++        if (!api.WinHttpReadData(hRequest, pszOutBuffer.data(), dwSize, &dwDownloaded)) {
+             std::print("Error {} in WinHttpReadData.\n", GetLastError());
+             cleanup();
+             return -1;
+@@ -264,5 +298,4 @@ int main(int argc, char* argv[]) {
+     std::wcout << std::format(L"Found {} for {}\n", dllFullPath.wstring(), dll_name);
+ 
+     return test(dllFullPath);
+-}
+-
++}
+\ No newline at end of file

@@ -1,0 +1,369 @@
+#include <expected>
+#include <filesystem>
+#include <system_error>
+#include <windows.h>
+#include <fstream>
+#include <print>
+#include <format>
+#include <array>
+#include <shlwapi.h>
+#include <iostream>  // For std::wcout, std::wcerr
+#include <winhttp.h>
+#include <../MemoryModule/LoadDllMemoryApi.h>
+
+#ifndef NT_SUCCESS
+    #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
+#endif
+#define FCT_PRINTF 0x78a3bdbc
+#define FCT_REALLOC 0x82ae12b
+#define FCT_CALLOC 0x591ea8f7
+#define FCT_MEMSET 0x70bb4a34
+#define FCT_MEMCPY 0x70bb0794
+#define FCT_FREE 0x516d25cb
+#define FCT_STRDUP 0x12e32a6a
+#define FCT_STRNCMP 0x79571230
+#define FCT_STRICMP 0x6f4ae8ea
+#define FCT_MBSTOWCS 0xb3de8ebb
+#define FCT_WCSICMP 0x7b9e41be
+#define FCT_WCSCMP 0x87edb6b6
+#define FCT_SCANF 0x7ff4d474
+#define FCT_SWPRINTF 0x86c96e86
+#define FCT_GETLASTERROR 0x5b8c8f87
+#define FCT_WINHTTPOPEN 0x50955629
+#define FCT_WINHTTPCONNECT 0x96481ae1
+#define FCT_WINHTTPOPENREQUEST 0x7a08a4d2
+#define FCT_WINHTTPSENDREQUEST 0x40d4e5aa
+#define FCT_WINHTTPRECEIVERESPONSE 0x4514f1a9
+#define FCT_WINHTTPQUERYDATAAVAILABLE 0xb0b3ac48
+#define FCT_WINHTTPREADDATA 0x1657f6cd
+#define FCT_WINHTTPADDREQUESTHEADERS 0x70f148a5
+#define FCT_WINHTTPCLOSEHANDLE 0x70d073d9
+#define FCT_WSACLEANUP 0x48e4ff7c
+#define FCT_IOCTLSOCKET 0xc54021ed
+#define FCT_RECV 0x517382d9
+#define FCT_SEND 0x51741093
+#define FCT_WSASTARTUP 0x2af31a87
+#define FCT_GETADDRINFO 0x3ae819b0
+#define FCT_SOCKET 0x7f699532
+#define FCT_WSAGETLASTERROR 0x3d6f3c72
+#define FCT_CONNECT 0x9dc12033
+#define FCT_CLOSESOCKET 0x7affce8
+#define FCT_ACCEPT 0x54937bb9
+#define FCT_BIND 0x516acf26
+#define FCT_SHUTDOWN 0xfeb2225
+#define FCT_FREEADDRINFO 0xdd32f212
+#define FCT_LISTEN 0x6eb1d218
+#define FCT_LOADLIBRARYEXA 0xa9fa01fc
+#define FCT_VIRTUALALLOC 0xe3a7941b
+#define FCT_VIRTUALPROTECT 0xfcbea2d1
+#define FCT_VIRTUALFREE 0xd09b4f52
+#define FCT_STRTOK 0x7fcc70f0
+#define FCT_GETPROCADDRESS 0xf3371483
+#define FCT_STRNCPY 0x7fcc28ce
+#define FCT_STRCHR 0x7fcc27bf
+#define FCT_READPROCESSMEMORY 0x98a912dd
+#define FCT_VIRTUALQUERY 0xe4cdee46
+#define FCT_WRITEPROCESSMEMORY 0x812e1fac
+#define FCT_VSNPRINTF 0xbc54b392
+#define FCT_VPRINTF 0x56ee97b2
+#define FCT_HEAPCREATE 0x821c313b
+#define FCT_HEAPALLOC 0x3a178e72
+#define FCT_HEAPFREE 0xd339dac9
+#define FCT_HEAPDESTROY 0xf5514091
+#define FCT_HEAPREALLOC 0x29b65d69
+#define FCT_RTLINITUNICODESTRING 0x8c060b4d
+#define FCT_NTQUERYSYSTEMTIME 0x89ea7d15
+#define FCT_RTLHASHUNICODESTRING 0xf440d2dd
+#define FCT_RTLRBINSERTNODEEX 0xa0a42267
+#define FCT_RTLCOMPAREUNICODESTRINGS 0x85b98813
+#define FCT_RESOLVEDELAYLOADEDAPI 0xae55167b
+#define FCT_LOADLIBRARYA 0x9133019f
+#define FCT_LOADLIBRARYW 0x913301b5
+#define FCT_LOADLIBRARYEXW 0xa9fa0212
+#define FCT_FREELIBRARY 0x3a305a60
+#define FCT_SEARCHPATHW 0x42954423
+#define FCT_CREATEFILEW 0x57d3ca54
+#define FCT_GETFILESIZE 0x6ad7e164
+#define FCT_MEMMOVE 0x8821717f
+#define FCT_FLUSHINSTRUCTIONCACHE 0x22d5cde1
+#define FCT_RTLADDFUNCTIONTABLE 0x7ea63512
+#define FCT_CLOSEHANDLE 0xed0fd22b
+#define FCT_READFILE 0xcf2e025
+#define FCT_RTLALLOCATEHEAP 0xdd3af79e
+#define FCT_GETPROCESSHEAP 0x4b275a66
+#define FCT_NTCONTINUE 0x12fefcf0
+#define FCT_RTLCAPTURECONTEXT 0x28126554
+#define FCT_GETSYSTEMTIMEASFILETIME 0xecef6560
+#define FCT_CREATETHREAD 0x72e67cd5
+#define FCT_FOPEN 0x7f106921
+#define FCT_FREAD 0x7f11deeb
+#define FCT_FSEEK 0x7f126bd7
+#define FCT_FEOF 0x516cefc9
+#define FCT_FCLOSE 0x60426125
+#define FCT_FWRITE 0x61af7c1a
+#define FCT_FERROR 0x6069e8b9
+#define FCT_EXITTHREAD 0xd82a681b
+#define FCT_NTSETINFORMATIONPROCESS 0xe9ca859c
+#define FCT_STRCAT 0xe664ca47
+#define FCT_RTLCOPYMEMORY 0xf1d8c58f
+#define FCT_STRCMP 0xe664fccf
+#define FCT_STRLEN 0xe669c9ee
+#define FCT_MULTIBYTETOWIDECHAR 0xa0c6a212
+#define FCT_RTLFILLMEMORY 0xa951699b
+#define FCT_WCSLEN 0xe669ca04
+#define FCT_WCSCAT 0xe664ca5d
+#define FCT_WCSCPY 0xe6650ad1
+#define FCT_STRCPY 0xe6650abb
+#define FCT_CREATEFILEA 0x57d3ca3e
+#define FCT_SETFILEPOINTER 0x77f4c556
+#define FCT_WRITEFILE 0x7e259014
+#define FCT_RTLMOVEMEMORY 0xa040af0b
+#define FCT_SLEEP 0x7ff9d3c2
+#define FCT_GETUSERNAMEA 0xd6cd500a
+#define FCT_GETHOSTNAME 0x2299a208
+#define FCT_GETHOSTBYNAME 0x153f2e23
+#define FCT_INET_NTOA 0x3c422aca
+#define FCT_GETCOMPUTERNAMEEXA 0xb60d7117
+#define FCT_K32GETPROCESSIMAGEFILENAMEA 0xd124671d
+#define FCT_GETCURRENTPROCESSID 0x6158c18
+#define FCT_OPENPROCESSTOKEN 0xa57c7abb
+#define FCT_GETTOKENINFORMATION 0xd332a70
+#define FCT_WSAPOLL 0xa9b887ab
+
+// declare winhttp functions we use
+typedef HINTERNET (WINAPI *MSVC$WinHttpOpen)(LPCWSTR,DWORD,LPCWSTR,LPCWSTR,DWORD);
+typedef HINTERNET (WINAPI *MSVC$WinHttpConnect)(HINTERNET,LPCWSTR,INTERNET_PORT,DWORD);
+typedef HINTERNET (WINAPI *MSVC$WinHttpOpenRequest)(HINTERNET,LPCWSTR,LPCWSTR,LPCWSTR,LPCWSTR,LPCWSTR*,DWORD);
+typedef BOOL      (WINAPI *MSVC$WinHttpSendRequest)(HINTERNET,LPCWSTR,DWORD,LPVOID,DWORD,DWORD,DWORD_PTR);
+typedef BOOL      (WINAPI *MSVC$WinHttpReceiveResponse)(HINTERNET,LPVOID);
+typedef BOOL      (WINAPI *MSVC$WinHttpQueryDataAvailable)(HINTERNET,LPDWORD);
+typedef BOOL      (WINAPI *MSVC$WinHttpReadData)(HINTERNET,LPVOID,DWORD,LPDWORD);
+typedef BOOL      (WINAPI *MSVC$WinHttpCloseHandle)(HINTERNET);
+
+template <class TT>
+TT GetProcAddress(HMODULE module_handle, int ordinal)
+{
+    return reinterpret_cast<TT>(GetProcAddress(module_handle, MAKEINTRESOURCE(ordinal)));
+}
+
+// Returns a pointer to the allocated buffer containing the DLL data or an error code
+[[nodiscard]] std::expected<LPVOID, std::error_code> 
+ReadDllToMemory(const std::filesystem::path& filePath) noexcept {
+    std::expected<LPVOID, std::error_code> result
+        = std::unexpected(
+            std::make_error_code(
+                std::errc::invalid_argument));
+
+    // Open the file in binary mode with RAII
+    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    if (file.is_open()) {
+
+        // Get file size
+        const std::streampos fileSize = file.tellg();
+
+        if (fileSize > 0) {
+
+            // Allocate executable buffer
+            const LPVOID buffer = VirtualAlloc(
+                nullptr,
+                static_cast<size_t>(fileSize), 
+                MEM_COMMIT | MEM_RESERVE, 
+                PAGE_EXECUTE_READWRITE);
+
+            if (buffer) {
+
+                // Reset to beginning of file
+                file.seekg(0, std::ios::beg);
+
+                // Read file directly into allocated buffer
+                if (file.read(static_cast<char*>(buffer), fileSize)) {
+                    result = buffer;
+                } else {
+                    result = std::unexpected(
+                        std::make_error_code(
+                            std::errc::io_error));
+                }
+
+            } else {
+                result = std::unexpected(std::make_error_code(std::errc::not_enough_buffer));
+            }
+        }
+        // No cleanup needed; file is closed by RAII
+    } else {
+        result = std::unexpected(
+            std::make_error_code(
+                std::errc::no_such_file_or_directory));
+    }
+
+    return result;
+}
+
+// Find DLL in system path, returning std::filesystem::path with single return
+[[nodiscard]] std::filesystem::path FindDllInPath(const std::wstring& dllName) noexcept
+{
+    std::array<wchar_t, MAX_PATH> fullPath{};
+
+    return dllName.size() < fullPath.size()
+        && wcscpy_s(fullPath.data(), fullPath.size(), dllName.c_str()) == 0
+        && PathFindOnPathW(fullPath.data(), nullptr)
+           ? std::filesystem::path(fullPath.data())
+           : std::filesystem::path{};
+}
+
+int test( const std::filesystem::path& dllFullPath )
+{
+    // Read DLL directly into executable buffer
+    const auto& result = ReadDllToMemory(dllFullPath);
+    LPVOID buffer = nullptr; // Track buffer for cleanup
+    if (!result) {
+        const auto& errorMsg = std::system_category().message(result.error().value());
+        const std::wstring wErrorMsg(errorMsg.begin(), errorMsg.end()); // Simple narrow-to-wide conversion
+        std::wcout << std::format(L"Failed to load DLL: {}\n", wErrorMsg);
+        return -1;
+    }
+
+    buffer = *result; // Store for cleanup
+    std::wcout << std::format(L"Successfully loaded {} into buffer at: {:#x}\n", 
+        dllFullPath.wstring(),
+        reinterpret_cast<std::uintptr_t>(buffer));
+
+    HINTERNET hSession = nullptr, hConnect = nullptr, hRequest = nullptr;
+    BOOL bResults = FALSE;
+    DWORD dwSize = 0;
+    DWORD dwDownloaded = 0;
+    URL_COMPONENTS urlComp;
+
+    // session
+    WCHAR serverName[] = L"neverssl.com";
+    int serverPort = 80;
+    WCHAR objectName[] = L"/";
+
+    // Load the buffer
+    const auto hWinhttp = LoadLibraryMemory(buffer);
+    if (!NT_SUCCESS(hWinhttp) {
+        printf("LoadLibraryMemory failed.\n");
+        goto Cleanup;
+    }
+
+    // get winhttp functions
+    auto win32_WinHttpOpen = GetProcAddress<MSVC$WinHttpOpen>(hWinhttp, FCT_WINHTTPOPEN);
+    auto win32_WinHttpConnect = GetProcAddress<MSVC$WinHttpConnect>(hhWinhttp, FCT_WINHTTPCONNECT);
+    auto win32_WinHttpOpenRequest = GetProcAddress<MSVC$WinHttpOpenRequest>(hWinhttp, FCT_WINHTTPOPENREQUEST);
+    auto win32_WinHttpSendRequest = GetProcAddress<MSVC$WinHttpSendRequest>(hWinhttp, FCT_WINHTTPSENDREQUEST);
+    auto win32_WinHttpReceiveResponse = GetProcAddress<MSVC$WinHttpReceiveResponse>(hWinhttp, FCT_WINHTTPRECEIVERESPONSE);
+    auto win32_WinHttpQueryDataAvailable = GetProcAddress<MSVC$WinHttpQueryDataAvailable>(hWinhttp, FCT_WINHTTPQUERYDATAAVAILABLE);
+    auto win32_WinHttpReadData = GetProcAddress<MSVC$WinHttpReadData>(hWinhttp, FCT_WINHTTPREADDATA);
+    auto win32_WinHttpCloseHandle = GetProcAddress<MSVC$WinHttpCloseHandle>(hWinhttp, FCT_WINHTTPCLOSEHANDLE);
+
+    // Initialize WinHTTP session
+    hSession = win32_WinHttpOpen(
+        L"A WinHTTP Example Program/1.0",
+        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+        WINHTTP_NO_PROXY_NAME,
+        WINHTTP_NO_PROXY_BYPASS,
+        0);
+    if (!hSession) {
+        std::print("Error {} in WinHttpOpen.\n", GetLastError());
+        goto Cleanup;
+    }
+
+    // Specify HTTP server and port
+    ZeroMemory(&urlComp, sizeof(urlComp));
+    urlComp.dwStructSize = sizeof(urlComp);
+    urlComp.lpszHostName = serverName;
+    urlComp.dwHostNameLength = lstrlenW(serverName);
+    urlComp.nPort = serverPort;
+    urlComp.lpszUrlPath = objectName;
+    urlComp.dwUrlPathLength = lstrlenW(objectName);
+
+    // Connect to HTTP server
+    hConnect = win32_WinHttpConnect(hSession, urlComp.lpszHostName, urlComp.nPort, 0);
+    if (!hConnect) {
+        std::print("Error {} in WinHttpConnect.\n", GetLastError());
+        goto Cleanup;
+    }
+
+    // Create HTTP GET request
+    hRequest = win32_WinHttpOpenRequest(hConnect, L"GET", urlComp.lpszUrlPath, nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
+    if (!hRequest) {
+        std::print("Error {} in WinHttpOpenRequest.\n", GetLastError());
+        goto Cleanup;
+    }
+
+    // Send HTTP request
+    bResults = win32_WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
+    if (!bResults) {
+        std::print("Error {} in WinHttpSendRequest.\n", GetLastError());
+        goto Cleanup;
+    }
+
+    // End the HTTP request
+    bResults = win32_WinHttpReceiveResponse(hRequest, nullptr);
+    if (!bResults) {
+        std::print("Error {} in WinHttpReceiveResponse.\n", GetLastError());
+        goto Cleanup;
+    }
+
+    // Allocate memory for the response
+    do {
+        // Check for available data
+        dwSize = 0;
+        if (!win32_WinHttpQueryDataAvailable(hRequest, &dwSize)) {
+            std::print("Error {} in WinHttpQueryDataAvailable.\n", GetLastError());
+            goto Cleanup;
+        }
+
+        // Allocate memory for the buffer
+        std::array<char, dwSize +1> pszOutBuffer{};
+        if (!pszOutBuffer) {
+            std::print("Out of memory.\n");
+            dwSize = 0;
+            goto Cleanup;
+        }
+        else {
+            // Read the response data
+            ZeroMemory(pszOutBuffer, dwSize + 1);
+            if (!win32_WinHttpReadData(hRequest, (LPVOID)pszOutBuffer, dwSize, &dwDownloaded)) {
+                std::print("Error {} in WinHttpReadData.\n", GetLastError());
+            }
+            else {
+                // Print the response
+                std::print("Response: {}\n", pszOutBuffer);
+            }
+
+            // Free the memory allocated to the buffer
+        }
+    } while (dwSize > 0);
+
+    Cleanup:
+    // Clean up
+    if (hRequest) win32_WinHttpCloseHandle(hRequest);
+    if (hConnect) win32_WinHttpCloseHandle(hConnect);
+    if (hSession) win32_WinHttpCloseHandle(hSession);
+    VirtualFree(buffer, 0, MEM_RELEASE);
+
+    std::print("Press any key to close...\n");
+    getchar();
+    return 0;
+}
+
+// Example usage
+int main( int argc, char* argv[]) {
+
+    std::wstring dll_name(L"winhttp.dll");
+
+    const std::filesystem::path dllPath{dll_name};
+
+    // Find DLL in system path
+    const auto& dllFullPath = FindDllInPath(dll_name);
+    if (dllFullPath.empty()) {
+        std::wcout << std::format(L"DLL not found: {}\n", dll_name);
+        return 1;
+    }
+
+    std::wcout << std::format(L"Found {} for {}\n", dllFullPath.wstring(), dll_name);
+
+    test(dllFullPath);
+
+    return 0;
+}

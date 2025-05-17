@@ -1,0 +1,23 @@
+
+
+Have this function return filepath
+[[nodiscard]] std::wstring FindDllInPath(const std::wstring& dllName) noexcept {
+    std::array<wchar_t, MAX_PATH> fullPath{};
+    return PathFindOnPathW(fullPath.data(), nullptr) ? fullPath.data() : std::wstring{};
+
+the program is failing as follows:
+shows the path to winhttp but does not include the file name
+
+---
+
+Found C:\WINDOWS\system32 for winhttp.dll
+
+Failed to load DLL: The system cannot find the file specified.
+
+I:\ports\repo\memorymodulepp\build\winhttp\Debug\winhttp-test.exe (process 17904) exited with code 1 (0x1).
+To automatically close the console when debugging stops, enable Tools->Options->Debugging->Automatically close the console when debugging stops.
+Press any key to close this window . . .
+
+---
+
+
