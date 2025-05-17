@@ -8,7 +8,7 @@ typedef HMODULE HMEMORYMODULE;
 #define MemoryModuleToModule(_hMemoryModule_) (_hMemoryModule_)
 
 #ifndef NT_SUCCESS
-#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
+#define NT_SUCCESS(Status) ((static_cast<NTSTATUS>(Status)) >= 0)
 #endif
 
 extern "C" {
