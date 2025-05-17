@@ -82,7 +82,7 @@ extern "C" NTSTATUS NTAPI LdrLoadDllMemoryExW(
 	if (dwFlags & LOAD_FLAGS_USE_DLL_NAME && (!DllName || !DllFullName))return STATUS_INVALID_PARAMETER_3;
 
 	if (DllName) {
-		int length = (int)wcslen(DllName);
+		int length = static_cast<int>(wcslen(DllName));
 		PLIST_ENTRY ListHead = &NtCurrentPeb()->Ldr->InLoadOrderModuleList, ListEntry = ListHead->Flink;
 		PIMAGE_NT_HEADERS h1 = RtlImageNtHeader(BufferAddress), h2 = nullptr;
 		if (!h1)return STATUS_INVALID_IMAGE_FORMAT;
@@ -104,7 +104,7 @@ extern "C" NTSTATUS NTAPI LdrLoadDllMemoryExW(
 
 				/* Let's compare their headers */
 				if (!(h2 = RtlImageNtHeader(CurEntry->DllBase)))continue;
-				if (!(module = MapMemoryModuleHandle((HMEMORYMODULE)CurEntry->DllBase)))continue;
+				if (!(module = MapMemoryModuleHandle(static_cast<HMEMORYMODULE>(CurEntry->DllBase))))continue;
 				if ((h1->OptionalHeader.SizeOfCode == h2->OptionalHeader.SizeOfCode) &&
 					(h1->OptionalHeader.SizeOfHeaders == h2->OptionalHeader.SizeOfHeaders)) {
 				
@@ -112,7 +112,7 @@ extern "C" NTSTATUS NTAPI LdrLoadDllMemoryExW(
 					if (!module->UseReferenceCount || dwFlags & LOAD_FLAGS_NOT_USE_REFERENCE_COUNT)return STATUS_INVALID_PARAMETER_3;
 					
 					RtlUpdateReferenceCount(module, FLAG_REFERENCE);
-					*BaseAddress = (HMEMORYMODULE)CurEntry->DllBase;
+					*BaseAddress = static_cast<HMEMORYMODULE>(CurEntry->DllBase);
 					if (LdrEntry)*LdrEntry = CurEntry;
 					return STATUS_SUCCESS;
 				}
@@ -120,7 +120,7 @@ extern "C" NTSTATUS NTAPI LdrLoadDllMemoryExW(
 		}
 	}
 
-	status = MemoryLoadLibrary(BaseAddress, BufferAddress, (DWORD)BufferSize);
+	status = MemoryLoadLibrary(BaseAddress, BufferAddress, static_cast<DWORD>(BufferSize));
 	if (!NT_SUCCESS(status) || status == STATUS_IMAGE_MACHINE_TYPE_MISMATCH)return status;
 
 	if (!(module = MapMemoryModuleHandle(*BaseAddress))) {
@@ -137,10 +137,10 @@ extern "C" NTSTATUS NTAPI LdrLoadDllMemoryExW(
 	if (dwFlags & LOAD_FLAGS_NOT_MAP_DLL) {
 
 		do {
-			status = MemoryResolveImportTable(LPBYTE(*BaseAddress), headers, module);
+			status = MemoryResolveImportTable(reinterpret_cast<LPBYTE>(*BaseAddress), headers, module);
 			if (!NT_SUCCESS(status))break;
 
-			status = MemorySetSectionProtection(LPBYTE(*BaseAddress), headers);
+			status = MemorySetSectionProtection(reinterpret_cast<LPBYTE>(*BaseAddress), headers);
 			if (!NT_SUCCESS(status))break;
 
 			if (!LdrpExecuteTLS(module) || !LdrpCallInitializers(module, DLL_PROCESS_ATTACH)) {
@@ -165,16 +165,16 @@ extern "C" NTSTATUS NTAPI LdrLoadDllMemoryExW(
 		module->MappedDll = true;
 		module->LdrEntry = ModuleEntry;
 
-		status = MemoryResolveImportTable(LPBYTE(*BaseAddress), headers, module);
+		status = MemoryResolveImportTable(reinterpret_cast<LPBYTE>(*BaseAddress), headers, module);
 		if (!NT_SUCCESS(status))break;
 
-		status = MemorySetSectionProtection(LPBYTE(*BaseAddress), headers);
+		status = MemorySetSectionProtection(reinterpret_cast<LPBYTE>(*BaseAddress), headers);
 		if (!NT_SUCCESS(status))break;
 
 		if (!(dwFlags & LOAD_FLAGS_NOT_USE_REFERENCE_COUNT))module->UseReferenceCount = true;
 
 		if (!(dwFlags & LOAD_FLAGS_NOT_ADD_INVERTED_FUNCTION)) {
-			status = RtlInsertInvertedFunctionTable((PVOID)module->codeBase, headers->OptionalHeader.SizeOfImage);
+			status = RtlInsertInvertedFunctionTable(static_cast<PVOID>(module->codeBase), headers->OptionalHeader.SizeOfImage);
 			if (!NT_SUCCESS(status)) break;
 
 			module->InsertInvertedFunctionTableEntry = true;
@@ -244,7 +244,7 @@ extern "C" NTSTATUS NTAPI LdrUnloadDllMemory(_In_ HMEMORYMODULE BaseAddress) {
 			break;
 		}
 
-		CurEntry = (PLDR_DATA_TABLE_ENTRY)module->LdrEntry;
+		CurEntry = static_cast<PLDR_DATA_TABLE_ENTRY>(module->LdrEntry);
 
 		if (headers->OptionalHeader.SizeOfImage != CurEntry->SizeOfImage) __fastfail(FAST_FAIL_FATAL_APP_EXIT);
 
@@ -260,8 +260,8 @@ extern "C" NTSTATUS NTAPI LdrUnloadDllMemory(_In_ HMEMORYMODULE BaseAddress) {
 
 		module->underUnload = true;
 		if (module->initialized) {
-			PLDR_INIT_ROUTINE((LPVOID)(module->codeBase + headers->OptionalHeader.AddressOfEntryPoint))(
-				(HINSTANCE)module->codeBase,
+			PLDR_INIT_ROUTINE(static_cast<LPVOID>(module->codeBase + headers->OptionalHeader.AddressOfEntryPoint))(
+				reinterpret_cast<HINSTANCE>(module->codeBase),
 				DLL_PROCESS_DETACH,
 				0
 				);
