@@ -213,7 +213,9 @@ static int do_launch_main(int argc, const char* argv[]
 
     auto somux_lib = setup_somux(launch_settings);
 
+#ifdef ASI_PLAT_WINDOWS
     LoadAllDllsAndReturnGlueApp(hfb_info.use_this_hfb().string());
+#endif
 
     return launch_main_app(launch_settings, hfb_info, fixed_argc, fixed_argv
 #ifdef ASI_PLAT_WINDOWS
@@ -224,7 +226,10 @@ static int do_launch_main(int argc, const char* argv[]
 
 
 //-----------------------------------------------------------------------------
-int launch_main(int argc, const char* argv[], HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, int nCmdShow)
+int launch_main(int argc, const char* argv[],
+#ifdef ASI_PLAT_WIN32
+    HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR cmdLine, int nCmdShow)
+#endif // ASI_PLAT_WIN32
 {
     int rc = 0;
     try {
