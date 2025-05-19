@@ -277,24 +277,32 @@ int main(int argc, char* argv[]) {
     // Process list of DLL paths/names
     auto dllPaths = std::vector<fs::path>();
     for (auto ii = 1; ii < argc; ++ii) {
-        auto path = fs::path(argv[ii]);
+        // Check and append .dll extension if missing
+        auto inputPath = std::string(argv[ii]);
+        const auto hasDllExtension = fs::path(inputPath).extension() == ".dll" ||
+                                     fs::path(inputPath).extension() == ".DLL";
+        if (!hasDllExtension) {
+            inputPath += ".dll";
+        }
+
+        auto path = fs::path(inputPath);
         const auto isFilename = !path.has_parent_path();
         if (isFilename) {
             char fullPath[MAX_PATH];
-            strcpy_s(fullPath, argv[ii]);
+            strcpy_s(fullPath, inputPath.c_str());
             const auto found = PathFindOnPathA(fullPath, nullptr) != 0;
             if (found) {
                 path = fs::path(fullPath);
                 std::cout << std::format(
                     "Resolved {} to {}\n",
-                    argv[ii],
+                    inputPath,
                     path.string()
                 );
             }
             else {
                 std::cout << std::format(
                     "Error: Could not find {} in PATH\n",
-                    argv[ii]
+                    inputPath
                 );
                 continue;
             }
