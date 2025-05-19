@@ -25,6 +25,7 @@ set(common_sources
     LoadDllMemoryApi.cpp
     Loader.cpp
     MemoryModule.cpp
+    MemoryLoadLibraryEx.cpp
     MmpDotNet.cpp
     MmpLdrpTls.cpp
     MmpTls.cpp

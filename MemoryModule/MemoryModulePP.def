@@ -12,6 +12,7 @@ FreeLibraryMemory
 LdrLoadDllMemoryExW
 LdrUnloadDllMemory
 LdrUnloadDllMemoryAndExitThread
+FreeLibraryMemoryAndExitThread=LdrUnloadDllMemoryAndExitThread
 LdrQuerySystemMemoryModuleFeatures
 
 MmpGlobalDataPtr
@@ -20,3 +21,5 @@ GetMmpGlobalDataPtr
 MmRegisterImportTableResolver
 MmRemoveImportTableResolver
 MmClearImportTableResolvers
+
+MemoryLoadLibraryEx
