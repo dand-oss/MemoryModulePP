@@ -1,5 +1,5 @@
 
-shar $(git ls-files) > memorymodulepp.shar.txt
+shar $(git ls-files | grep -v 3rdparty) > memorymodulepp.shar.txt
 
 exit
 
