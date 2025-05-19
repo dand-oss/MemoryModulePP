@@ -12,7 +12,10 @@ FreeLibraryMemory
 LdrLoadDllMemoryExW
 LdrUnloadDllMemory
 LdrUnloadDllMemoryAndExitThread
+FreeLibraryMemoryAndExitThread=LdrUnloadDllMemoryAndExitThread
 LdrQuerySystemMemoryModuleFeatures
 
 MmpGlobalDataPtr
 GetMmpGlobalDataPtr
+
+MemoryLoadLibraryEx
