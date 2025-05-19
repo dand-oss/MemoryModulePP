@@ -28,5 +28,5 @@ set_target_properties(${exename} PROPERTIES
 file(TO_NATIVE_PATH "$<TARGET_FILE:a>" A_DLL)
 set_target_properties(${exename} PROPERTIES
     "VS_DEBUGGER_COMMAND_ARGUMENTS"
-    "glueapp"
+    "glueapp_d"
 )
