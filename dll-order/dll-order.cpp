@@ -26,84 +26,6 @@ struct std::formatter<HMODULE> {
     }
 };
 
-// Predefined list of DLLs to import with --import
-const std::vector<std::string> dllLoadOrder = {
-    "I77_d.dll",
-    "Qt5CoreASVd_d.dll",
-    "audit_customize_d.dll",
-    "ibpp_d.dll",
-    "nlopt_d.dll",
-    "ntools_d.dll",
-    "qhttpserver_d.dll",
-    "rttr_core_d.dll",
-    "rwtool_d.dll",
-    "xlsx_d.dll",
-    "yaml-cpp_d.dll",
-    "F77_d.dll",
-    "Qt5GuiASVd_d.dll",
-    "Qt5NetworkASVd_d.dll",
-    "Qt5XmlASVd_d.dll",
-    "apptools_d.dll",
-    "athread_d.dll",
-    "tools_d.dll",
-    "Qt5WidgetsASVd_d.dll",
-    "Wt2_d.dll",
-    "dynalift_d.dll",
-    "oilcore1_d.dll",
-    "ole_d.dll",
-    "twophase_d.dll",
-    "win31_d.dll",
-    "Qt5PrintSupportASVd_d.dll",
-    "Qt5SvgASVd_d.dll",
-    "gtools_d.dll",
-    "winhelp_d.dll",
-    "oilcore2_d.dll",
-    "glsupdll1_d.dll",
-    "piapi_d.dll",
-    "oilrunt_d.dll",
-    "otools_d.dll",
-    "glsupdll2_d.dll",
-    "piapi_oil_d.dll",
-    "asirpc_d.dll",
-    "oilapi_d.dll",
-    "oilapp_d.dll",
-    "oilcomp_d.dll",
-    "oilole_d.dll",
-    "qtoil_d.dll",
-    "Wt2_Oil_d.dll",
-    "calc_d.dll",
-    "dstng_d.dll",
-    "glsuplib1_d.dll",
-    "oildll_d.dll",
-    "qtxlsx_d.dll",
-    "network_d.dll",
-    "glsuplib2_d.dll",
-    "gluecomlib_d.dll",
-    "dbobj_d.dll",
-    "dstng_odbc_d.dll",
-    "dstng_oracle_d.dll",
-    "dstng_firebird_d.dll",
-    "dstng_vanilla_d.dll",
-    "gui_d.dll",
-    "graphds_d.dll",
-    "asv-settings-app_d.dll",
-    "glueapp_d.dll"
-};
-
-// Reads a DLL file into a vector for import
-static std::expected<std::vector<unsigned char>, std::error_code> readDllFromFileForImport(
-    const fs::path& path) {
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) return std::unexpected(std::make_error_code(std::errc::no_such_file_or_directory));
-    const auto fileSize = file.tellg();
-    if (fileSize <= 0) return std::unexpected(std::make_error_code(std::errc::no_such_file_or_directory));
-    std::vector<unsigned char> dllData(static_cast<size_t>(fileSize));
-    file.seekg(0, std::ios::beg);
-    return file.read(reinterpret_cast<char*>(dllData.data()), fileSize)
-        ? std::expected<std::vector<unsigned char>, std::error_code>{dllData}
-        : std::unexpected(std::make_error_code(std::errc::io_error));
-}
-
 // Reads a DLL file into a VirtualAlloc buffer
 static std::expected<std::pair<LPVOID, size_t>, std::error_code> readDllFromFile(
     const fs::path& path) {
@@ -137,38 +59,6 @@ static std::expected<std::pair<LPVOID, size_t>, std::error_code> readDllFromFile
     fclose(f);
 
     return std::make_pair(buffer, static_cast<size_t>(fileSize));
-}
-
-// Populates SQLite database with DLL data
-static bool populateSqliteDb(
-    sqlite3pp::database& db,
-    const std::vector<fs::path>& dllPaths) {
-    try {
-        db.execute("CREATE TABLE IF NOT EXISTS dlls (name TEXT PRIMARY KEY, data BLOB)");
-        sqlite3pp::command cmd(db, "INSERT OR REPLACE INTO dlls (name, data) VALUES (?, ?)");
-        for (const auto& path : dllPaths) {
-            auto dllData = readDllFromFileForImport(path);
-            if (!dllData) {
-                std::cout << std::format(
-                    "Error: Failed to read {}: {}\n",
-                    path.string(),
-                    dllData.error().message());
-                continue;
-            }
-            const std::string dllName(path.filename().string());
-            std::string lowerName(dllName);
-            std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
-            cmd.bind(1, lowerName, sqlite3pp::copy);
-            cmd.bind(2, dllData->data(), static_cast<int>(dllData->size()), sqlite3pp::nocopy);
-            cmd.execute();
-            cmd.reset();
-            std::cout << std::format("Added {} to SQLite database\n", lowerName);
-        }
-        return true;
-    } catch (const sqlite3pp::database_error& e) {
-        std::cout << std::format("SQLite error: {}\n", e.what());
-        return false;
-    }
 }
 
 class DllLoader {
@@ -432,17 +322,12 @@ static HMEMORYMODULE loadDll(const fs::path& path, DllLoader& loader) {
     return handle;
 }
 
-// Parses command-line arguments and returns DLL paths and import flag
-static std::pair<std::vector<fs::path>, bool> parseArguments(int argc, char* argv[]) {
+// Parses command-line arguments and returns DLL paths
+static std::vector<fs::path> parseArguments(int argc, char* argv[]) {
     std::vector<fs::path> dllPaths;
-    bool importPredefined = false;
 
     for (int ii = 1; ii < argc; ++ii) {
         const std::string arg(argv[ii]);
-        if (arg == "--import") {
-            importPredefined = true;
-            continue;
-        }
         std::string inputPath(arg);
         if (!(fs::path(inputPath).extension() == ".dll" || fs::path(inputPath).extension() == ".DLL")) {
             inputPath += ".dll";
@@ -464,33 +349,7 @@ static std::pair<std::vector<fs::path>, bool> parseArguments(int argc, char* arg
         dllPaths.push_back(path);
     }
 
-    return {dllPaths, importPredefined};
-}
-
-// Populates SQLite database with predefined DLLs and exits
-static void populatePredefinedDlls(sqlite3pp::database& db) {
-    std::vector<fs::path> predefinedPaths;
-    for (const auto& dllName : dllLoadOrder) {
-        char fullPath[MAX_PATH];
-        strcpy_s(fullPath, dllName.c_str());
-        bool found = PathFindOnPathA(fullPath, nullptr) != 0;
-        if (found) {
-            fs::path path(fullPath);
-            predefinedPaths.push_back(path);
-            std::cout << std::format(
-                "Resolved predefined DLL {} to {}\n",
-                dllName,
-                path.string());
-        } else {
-            std::cout << std::format(
-                "Error: Could not find predefined DLL {} in PATH\n",
-                dllName);
-        }
-    }
-    if (!predefinedPaths.empty()) {
-        populateSqliteDb(db, predefinedPaths);
-    }
-    exit(0);
+    return dllPaths;
 }
 
 // Loads DLLs from command-line arguments
@@ -516,21 +375,16 @@ static void reportLoadOrder(const DllLoader& loader) {
 int main(int argc, char* argv[])
 {
     // Parse command-line arguments
-    const auto [dllPaths, importPredefined] = parseArguments(argc, argv);
+    const auto dllPaths = parseArguments(argc, argv);
 
     // Check for valid input
-    if (!importPredefined && dllPaths.empty()) {
-        std::cout << std::format("Usage: {} [--import] <dll_path> [dll_path...]\n", argv[0]);
+    if (dllPaths.empty()) {
+        std::cout << std::format("Usage: {} <dll_path> [dll_path...]\n", argv[0]);
         return 1;
     }
 
     // Initialize SQLite database
     sqlite3pp::database db("dlls.db", SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
-
-    // Handle --import option
-    if (importPredefined) {
-        populatePredefinedDlls(db);
-    }
 
     // Initialize DLL loader and load from database
     DllLoader loader(db);
