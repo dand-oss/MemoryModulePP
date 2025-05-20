@@ -265,11 +265,11 @@ public:
             this
         );
 
+
+        const char* loadfrom = !dll_in_db ? "filesystem" : "SQLite" ;
         if (handle) {
             // mark it
             loadedModules_[handle] = true;
-
-            const char* loadfrom = !dll_in_db ? "filesystem" : "SQLite" ;
             // not recorded
             if (std::find(loadOrder_.begin(), loadOrder_.end(), lowerName) == loadOrder_.end()) {
                 loadOrder_.push_back(lowerName);
