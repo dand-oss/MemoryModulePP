@@ -117,22 +117,26 @@ static std::expected<std::pair<LPVOID, size_t>, std::error_code> readDllFromFile
         fclose(f);
         return std::unexpected(std::make_error_code(std::errc::no_such_file_or_directory));
     }
+    if (fileSize > SIZE_MAX) {
+        fclose(f);
+        return std::unexpected(std::make_error_code(std::errc::file_too_large));
+    }
     _fseeki64(f, 0, SEEK_SET);
 
-    LPVOID buffer = VirtualAlloc(nullptr, fileSize, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+    LPVOID buffer = VirtualAlloc(nullptr, static_cast<size_t>(fileSize), MEM_COMMIT, PAGE_EXECUTE_READWRITE);
     if (!buffer) {
         fclose(f);
         return std::unexpected(std::make_error_code(std::errc::not_enough_memory));
     }
 
-    if (fread(buffer, 1, fileSize, f) != static_cast<size_t>(fileSize)) {
+    if (fread(buffer, 1, static_cast<size_t>(fileSize), f) != static_cast<size_t>(fileSize)) {
         VirtualFree(buffer, 0, MEM_RELEASE);
         fclose(f);
         return std::unexpected(std::make_error_code(std::errc::io_error));
     }
     fclose(f);
 
-    return std::make_pair(buffer, fileSize);
+    return std::make_pair(buffer, static_cast<size_t>(fileSize));
 }
 
 // Populates SQLite database with DLL data
@@ -222,7 +226,12 @@ public:
             auto it = qry.begin();
             if (it == qry.end()) return false;
             auto blob = (*it).get<const void*>(0);
-            size = static_cast<size_t>((*it).column_bytes(0));
+            const auto blobSize = (*it).column_bytes(0);
+            if (blobSize > SIZE_MAX) {
+                std::cout << std::format("Error: SQLite data for {} too large for size_t\n", name);
+                return false;
+            }
+            size = static_cast<size_t>(blobSize);
             buffer = VirtualAlloc(nullptr, size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
             if (!buffer) {
                 std::cout << std::format("Error: Failed to allocate memory for {}\n", name);
