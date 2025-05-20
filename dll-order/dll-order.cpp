@@ -205,65 +205,63 @@ public:
         std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
         std::cout << std::format("Attempting to load dependency: {}\n", lowerName);
 
+        // check loaded
         auto existingHandle = GetModuleHandleA(lowerName.c_str());
         if (existingHandle) {
+
+            // need to keep?
             if (loadedModules_.find(existingHandle) == loadedModules_.end()) {
                 loadedModules_[existingHandle] = false;
                 if (std::find(loadOrder_.begin(), loadOrder_.end(), lowerName) == loadOrder_.end()) {
                     loadOrder_.push_back(lowerName);
                 }
             }
+
+            // report
             std::cout << std::format("DLL {} already loaded at {}\n", lowerName, existingHandle);
+            // done
             return existingHandle;
         }
 
         std::vector<unsigned char> dllData;
-        if (hasDllInSqlite(lowerName, dllData)) {
-            std::cout << std::format("Loading {} from SQLite (memory)\n", lowerName);
-            auto handle = MemoryLoadLibraryEx(
-                dllData.data(),
-                dllData.size(),
-                nullptr,
-                nullptr,
-                LoadDependencyCallback,
-                GetProcAddressCallback,
-                FreeLibraryCallback,
-                this
-            );
-            if (handle) {
-                loadedModules_[handle] = true;
-                if (std::find(loadOrder_.begin(), loadOrder_.end(), lowerName) == loadOrder_.end()) {
-                    loadOrder_.push_back(lowerName);
-                }
-                std::cout << std::format("Successfully loaded {} from SQLite at {}\n", lowerName, handle);
-            } else {
-                std::cout << std::format("Failed to load {} from SQLite\n", lowerName);
-            }
-            return handle;
-        }
 
-        std::cout << std::format("Loading {} from filesystem\n", lowerName);
-        char fullPath[MAX_PATH];
-        strcpy_s(fullPath, lowerName.c_str());
-        bool found = PathFindOnPathA(fullPath, nullptr) != 0;
-        fs::path path;
-        if (found) {
+        // in db?
+        const auto dll_in_db(hasDllInSqlite(lowerName, dllData)) ;
+
+        LPVOID dll_data ;
+        size_t dll_size ;
+        if (dll_in_db) {
+            std::cout << std::format("Loading {} from SQLite (memory)\n", lowerName);
+            dll_data = dllData.data() ;
+            dll_size = dllData.size() ;
+        }
+        else {
+            std::cout << std::format("Loading {} from filesystem\n", lowerName);
+            char fullPath[MAX_PATH];
+            strcpy_s(fullPath, lowerName.c_str());
+            bool found = PathFindOnPathA(fullPath, nullptr) != 0;
+            fs::path path;
+            if (!found) {
+                std::cout << std::format("Error: Could not find {} in PATH\n", lowerName);
+                return nullptr;
+            }
+
             path = fs::path(fullPath);
             std::cout << std::format("Resolved {} to {}\n", lowerName, path.string());
-        } else {
-            std::cout << std::format("Error: Could not find {} in PATH\n", lowerName);
-            return nullptr;
+
+            auto dllDataResult = readDllFromFile(path);
+            if (!dllDataResult) {
+                std::cout << std::format("Error: Failed to load DLL data for {}: {}\n", path.string(), dllDataResult.error().message());
+                return nullptr;
+            }
+            dll_data = dllDataResult->data() ;
+            dll_size = dllDataResult->size() ;
         }
 
-        auto dllDataResult = readDllFromFile(path);
-        if (!dllDataResult) {
-            std::cout << std::format("Error: Failed to load DLL data for {}: {}\n", path.string(), dllDataResult.error().message());
-            return nullptr;
-        }
-
+        //
         auto handle = MemoryLoadLibraryEx(
-            dllDataResult->data(),
-            dllDataResult->size(),
+            dll_data,
+            dll_size,
             nullptr,
             nullptr,
             LoadDependencyCallback,
@@ -271,16 +269,22 @@ public:
             FreeLibraryCallback,
             this
         );
+
         if (handle) {
+            // mark it
             loadedModules_[handle] = true;
+
+            const char* loadfrom = !dll_in_db ? "filesystem" : "SQLite" ;
+            // not recorded
             if (std::find(loadOrder_.begin(), loadOrder_.end(), lowerName) == loadOrder_.end()) {
                 loadOrder_.push_back(lowerName);
             }
-            std::cout << std::format("Successfully loaded {} from filesystem at {}\n", lowerName, handle);
+            std::cout << std::format("Successfully loaded {} from {} at {}\n", lowerName, dll_in_db, handle);
         } else {
-            std::cout << std::format("Failed to load {} from filesystem\n", lowerName);
+                std::cout << std::format("Failed to load {} from {}\n", lowerName, dll_in_db);
+            }
+            return handle;
         }
-        return handle;
     }
 
     // Static callback functions for MemoryLoadLibraryEx
