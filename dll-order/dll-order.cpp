@@ -246,11 +246,12 @@ public:
             path = fs::path(fullPath);
             std::cout << std::format("Resolved {} to {}\n", lowerName, path.string());
 
-            auto dllData = readDllFromFile(path);
-            if (!dllData) {
-                std::cout << std::format("Error: Failed to load DLL data for {}: {}\n", path.string(), dllData.error().message());
+            auto dllDataResult = readDllFromFile(path);
+            if (!dllDataResult) {
+                std::cout << std::format("Error: Failed to load DLL data for {}: {}\n", path.string(), dllDataResult.error().message());
                 return nullptr;
             }
+            dllData =dllDataResult.value();
         } // else
 
         //
