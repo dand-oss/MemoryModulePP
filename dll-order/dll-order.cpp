@@ -339,12 +339,11 @@ static HMEMORYMODULE loadDll(const fs::path& path, DllLoader& loader) {
     return handle;
 }
 
-int main(int argc, char* argv[])
-{
-    bool loadPredefined = false;
+// Parses command-line arguments and returns DLL paths and load flag
+static std::pair<std::vector<fs::path>, bool> parseArguments(int argc, char* argv[]) {
     std::vector<fs::path> dllPaths;
+    bool loadPredefined = false;
 
-    // Parse command-line arguments
     for (int ii = 1; ii < argc; ++ii) {
         std::string arg(argv[ii]);
         if (arg == "--load") {
@@ -372,50 +371,37 @@ int main(int argc, char* argv[])
         dllPaths.push_back(path);
     }
 
-    // Check for valid input
-    if (!loadPredefined && dllPaths.empty()) {
-        std::cout << std::format(
-            "Usage: {} [--load] <dll_path> [dll_path...]\n",
-            argv[0]);
-        return 1;
-    }
+    return {dllPaths, loadPredefined};
+}
 
-    sqlite3pp::database db(
-         "dlls.db",
-         SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
-
-    // Load predefined DLLs if --load is specified
-    if (loadPredefined) {
-        std::vector<fs::path> predefinedPaths;
-        for (const auto& dllName : dllLoadOrder) {
-            char fullPath[MAX_PATH];
-            strcpy_s(fullPath, dllName.c_str());
-            bool found = PathFindOnPathA(fullPath, nullptr) != 0;
-            if (found) {
-                fs::path path(fullPath);
-                predefinedPaths.push_back(path);
-                std::cout << std::format(
-                    "Resolved predefined DLL {} to {}\n",
-                    dllName,
-                    path.string());
-            } else {
-                std::cout << std::format(
-                    "Error: Could not find predefined DLL {} in PATH\n",
-                    dllName);
-            }
+// Populates SQLite database with predefined DLLs and exits
+static void populatePredefinedDlls(sqlite3pp::database& db) {
+    std::vector<fs::path> predefinedPaths;
+    for (const auto& dllName : dllLoadOrder) {
+        char fullPath[MAX_PATH];
+        strcpy_s(fullPath, dllName.c_str());
+        bool found = PathFindOnPathA(fullPath, nullptr) != 0;
+        if (found) {
+            fs::path path(fullPath);
+            predefinedPaths.push_back(path);
+            std::cout << std::format(
+                "Resolved predefined DLL {} to {}\n",
+                dllName,
+                path.string());
+        } else {
+            std::cout << std::format(
+                "Error: Could not find predefined DLL {} in PATH\n",
+                dllName);
         }
-        if (!predefinedPaths.empty()) {
-            populateSqliteDb(db, predefinedPaths);
-        }
-        exit(0);
     }
+    if (!predefinedPaths.empty()) {
+        populateSqliteDb(db, predefinedPaths);
+    }
+    exit(0);
+}
 
-    DllLoader loader(db);
-
-    // Load all DLLs from SQLite database on first access
-    loader.loadAllDllsFromDb();
-
-    // Load DLLs from command-line arguments
+// Loads DLLs from command-line arguments
+static void loadDllsFromArgs(const std::vector<fs::path>& dllPaths, DllLoader& loader) {
     for (const auto& path : dllPaths) {
         std::cout << std::format("Processing DLL: {}\n", path.string());
         const auto handle = loadDll(path, loader);
@@ -423,13 +409,45 @@ int main(int argc, char* argv[])
             std::cout << std::format("DLL {} loaded successfully at {}\n", path.string(), handle);
         }
     }
+}
 
-    // Report load order
+// Reports the DLL load order
+static void reportLoadOrder(const DllLoader& loader) {
     const auto& loadOrder = loader.getLoadOrder();
     std::cout << "DLL load order (via import table resolution):\n";
     for (const auto& dll : loadOrder) {
         std::cout << std::format("  {}\n", dll);
     }
+}
+
+int main(int argc, char* argv[])
+{
+    // Parse command-line arguments
+    auto [dllPaths, loadPredefined] = parseArguments(argc, argv);
+
+    // Check for valid input
+    if (!loadPredefined && dllPaths.empty()) {
+        std::cout << std::format("Usage: {} [--load] <dll_path> [dll_path...]\n", argv[0]);
+        return 1;
+    }
+
+    // Initialize SQLite database
+    sqlite3pp::database db("dlls.db", SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
+
+    // Handle --load option
+    if (loadPredefined) {
+        populatePredefinedDlls(db);
+    }
+
+    // Initialize DLL loader and load from database
+    DllLoader loader(db);
+    loader.loadAllDllsFromDb();
+
+    // Load DLLs from command-line arguments
+    loadDllsFromArgs(dllPaths, loader);
+
+    // Report load order
+    reportLoadOrder(loader);
 
     return 0;
 }
