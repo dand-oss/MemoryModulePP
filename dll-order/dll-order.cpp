@@ -256,7 +256,7 @@ public:
             }
             dll_data = dllDataResult->data() ;
             dll_size = dllDataResult->size() ;
-        }
+        } // else
 
         //
         auto handle = MemoryLoadLibraryEx(
@@ -285,7 +285,6 @@ public:
             }
             return handle;
         }
-    }
 
     // Static callback functions for MemoryLoadLibraryEx
     static HCUSTOMMODULE WINAPI LoadDependencyCallback(
