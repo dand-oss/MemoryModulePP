@@ -136,7 +136,7 @@ static bool populateSqliteDb(
 
 class DllLoader {
 public:
-    explicit DllLoader(sqlite3pp::database& db) : db_(db) {}
+    explicit DllLoader(sqlite3pp::database& db) : db_(db), dllListLoaded_(false) {}
 
     ~DllLoader() { unloadAll(); }
 
@@ -231,7 +231,8 @@ public:
                 }
                 std::cout << std::format("Successfully loaded {} from SQLite at {}\n", dllName, handle);
             } else {
-                std::cout << std::format("Failed to load {} from SQLite\n", dllName); }
+                std::cout << std::format("Failed to load {} from SQLite\n", dllName);
+            }
             return handle;
         }
 
@@ -273,26 +274,68 @@ public:
         loader->loadedModules_.erase(it);
     }
 
+    // Load all DLLs from SQLite database
+    void loadAllDllsFromDb() {
+        if (dllListLoaded_) return; // Avoid reloading
+        dllListLoaded_ = true;
+
+        try {
+            sqlite3pp::query qry(db_, "SELECT name FROM dlls");
+            for (auto it = qry.begin(); it != qry.end(); ++it) {
+                std::string dllName = (*it).get<std::string>(0);
+                std::vector<unsigned char> dllData;
+                if (hasDllInSqlite(dllName, dllData)) {
+                    std::cout << std::format("Loading {} from SQLite\n", dllName);
+                    const auto handle = loadDll(dllData, dllName);
+                    if (handle) {
+                        std::cout << std::format("DLL {} loaded from SQLite at {}\n", dllName, handle);
+                    } else {
+                        std::cout << std::format("Error: Failed to load DLL {} from SQLite (Error: {})\n", dllName, GetLastError());
+                    }
+                }
+            }
+        } catch (const sqlite3pp::database_error& e) {
+            std::cout << std::format("SQLite error: {}\n", e.what());
+        }
+    }
+
 private:
     sqlite3pp::database& db_;
     std::unordered_map<HCUSTOMMODULE, bool> loadedModules_;
     std::vector<std::string> loadOrder_;
+    bool dllListLoaded_; // Flag to track if DLL list has been loaded
 };
 
-// Loads a DLL using MemoryLoadLibraryEx
+// Loads a DLL, checking SQLite first, then filesystem
 static HMEMORYMODULE loadDll(const fs::path& path, DllLoader& loader) {
-    auto dllData = readDllFromFile(path);
-    if (!dllData) {
-        std::cout << std::format("Error: Failed to load DLL data for {}: {}\n", path.string(), dllData.error().message());
+    std::string dllName = path.filename().string();
+    std::transform(dllName.begin(), dllName.end(), dllName.begin(), ::tolower);
+
+    // Check SQLite database first
+    std::vector<unsigned char> dllData;
+    if (loader.hasDllInSqlite(dllName, dllData)) {
+        std::cout << std::format("Loading {} from SQLite (memory)\n", dllName);
+        auto handle = loader.loadDll(dllData, dllName);
+        if (handle) {
+            std::cout << std::format("Successfully loaded {} from SQLite at {}\n", dllName, handle);
+            return handle;
+        } else {
+            std::cout << std::format("Error: Failed to load DLL {} from SQLite (Error: {})\n", dllName, GetLastError());
+        }
+    }
+
+    // Fallback to filesystem
+    auto dllDataResult = readDllFromFile(path);
+    if (!dllDataResult) {
+        std::cout << std::format("Error: Failed to load DLL data for {}: {}\n", path.string(), dllDataResult.error().message());
         return nullptr;
     }
 
-    std::string dllName = path.filename().string();
-    std::transform(dllName.begin(), dllName.end(), dllName.begin(), ::tolower);
-    std::cout << std::format("Loaded {} bytes from {}\n", dllData->size(), path.string());
-
-    auto handle = loader.loadDll(*dllData, dllName);
-    if (!handle) std::cout << std::format("Error: Failed to load DLL {} (Error: {})\n", path.string(), GetLastError());
+    std::cout << std::format("Loaded {} bytes from {}\n", dllDataResult->size(), path.string());
+    auto handle = loader.loadDll(*dllDataResult, dllName);
+    if (!handle) {
+        std::cout << std::format("Error: Failed to load DLL {} (Error: {})\n", path.string(), GetLastError());
+    }
     return handle;
 }
 
@@ -364,37 +407,21 @@ int main(int argc, char* argv[])
         if (!predefinedPaths.empty()) {
             populateSqliteDb(db, predefinedPaths);
         }
-
-        // done
         exit(0);
     }
 
     DllLoader loader(db);
 
+    // Load all DLLs from SQLite database on first access
+    loader.loadAllDllsFromDb();
+
     // Load DLLs from command-line arguments
     for (const auto& path : dllPaths) {
-        std::cout << std::format( "Processing DLL: {}\n", path.string());
+        std::cout << std::format("Processing DLL: {}\n", path.string());
         const auto handle = loadDll(path, loader);
         if (handle) {
-            std::cout << std::format( "DLL {} loaded successfully at {}\n", path.string(), handle);
+            std::cout << std::format("DLL {} loaded successfully at {}\n", path.string(), handle);
         }
-    }
-
-    // Load all DLLs from SQLite
-    try {
-        sqlite3pp::query qry(db, "SELECT name FROM dlls");
-        for (auto it = qry.begin(); it != qry.end(); ++it) {
-            std::string dllName = (*it).get<std::string>(0);
-            std::vector<unsigned char> dllData;
-            if (loader.hasDllInSqlite(dllName, dllData)) {
-                const auto handle = loader.loadDll(dllData, dllName);
-                std::cout << (handle
-                    ? std::format("DLL {} loaded from SQLite at {}\n", dllName, handle)
-                    : std::format("Error: Failed to load DLL {} from SQLite (Error: {})\n", dllName, GetLastError()));
-            }
-        }
-    } catch (const sqlite3pp::database_error& e) {
-        std::cout << std::format("SQLite error: {}\n", e.what());
     }
 
     // Report load order
@@ -402,7 +429,7 @@ int main(int argc, char* argv[])
     std::cout << "DLL load order (via import table resolution):\n";
     for (const auto& dll : loadOrder) {
         std::cout << std::format("  {}\n", dll);
-    } // for
+    }
 
     return 0;
 }
