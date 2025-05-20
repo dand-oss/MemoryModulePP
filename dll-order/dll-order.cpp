@@ -223,17 +223,14 @@ public:
             return existingHandle;
         }
 
+        // our dll buffer
         std::vector<unsigned char> dllData;
 
         // in db?
         const auto dll_in_db(hasDllInSqlite(lowerName, dllData)) ;
 
-        LPVOID dll_data ;
-        size_t dll_size ;
         if (dll_in_db) {
             std::cout << std::format("Loading {} from SQLite (memory)\n", lowerName);
-            dll_data = dllData.data() ;
-            dll_size = dllData.size() ;
         }
         else {
             std::cout << std::format("Loading {} from filesystem\n", lowerName);
@@ -249,19 +246,17 @@ public:
             path = fs::path(fullPath);
             std::cout << std::format("Resolved {} to {}\n", lowerName, path.string());
 
-            auto dllDataResult = readDllFromFile(path);
-            if (!dllDataResult) {
-                std::cout << std::format("Error: Failed to load DLL data for {}: {}\n", path.string(), dllDataResult.error().message());
+            auto dllData = readDllFromFile(path);
+            if (!dllData) {
+                std::cout << std::format("Error: Failed to load DLL data for {}: {}\n", path.string(), dllData.error().message());
                 return nullptr;
             }
-            dll_data = dllDataResult->data() ;
-            dll_size = dllDataResult->size() ;
         } // else
 
         //
         auto handle = MemoryLoadLibraryEx(
-            dll_data,
-            dll_size,
+            dllData.data(),
+            dllData.size(),
             nullptr,
             nullptr,
             LoadDependencyCallback,
@@ -279,9 +274,9 @@ public:
             if (std::find(loadOrder_.begin(), loadOrder_.end(), lowerName) == loadOrder_.end()) {
                 loadOrder_.push_back(lowerName);
             }
-            std::cout << std::format("Successfully loaded {} from {} at {}\n", lowerName, dll_in_db, handle);
+            std::cout << std::format("Successfully loaded {} from {} at {}\n", lowerName, loadfrom, handle);
         } else {
-                std::cout << std::format("Failed to load {} from {}\n", lowerName, dll_in_db);
+                std::cout << std::format("Failed to load {} from {}\n", lowerName, loadfrom);
             }
             return handle;
         }
