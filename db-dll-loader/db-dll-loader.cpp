@@ -124,7 +124,7 @@ private:
         const char* loadFrom = dllInDb ? "SQLite" : "filesystem";
         fs::path path;
         if (!dllInDb) {
-            std::cout << std::format("Loading {} from filesystem\n", dllName);
+            std::cout << std::format("Reading {} from filesystem\n", dllName);
             std::string inputPath = dllName;
             if (fs::path(inputPath).extension() != ".dll" && fs::path(inputPath).extension() != ".DLL") {
                 inputPath = std::format("{}.dll", dllName);
@@ -132,12 +132,12 @@ private:
             path = fs::path(inputPath);
             auto dllDataResult = readDllFromFile(path);
             if (!dllDataResult) {
-                std::cerr << std::format("Error: Failed to load DLL data for {}: {}\n", path.string(), dllDataResult.error().message());
+                std::cerr << std::format("Error: Failed to read DLL data for {}: {}\n", path.string(), dllDataResult.error().message());
                 return nullptr;
             }
             buffer = dllDataResult->first;
             size = dllDataResult->second;
-            std::cout << std::format("Loaded {} bytes from {}\n", size, path.string());
+            std::cout << std::format("Read {} bytes from {}\n", size, path.string());
         } else {
             std::cout << std::format("Loading {} from SQLite (memory)\n", dllName);
         }
