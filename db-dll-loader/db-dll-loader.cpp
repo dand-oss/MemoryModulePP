@@ -79,7 +79,12 @@ private:
     // Checks if a DLL exists in SQLite and allocates memory
     bool hasDllInSqlite(const std::string& name, LPVOID& buffer, size_t& size) {
         try {
-            sqlite3pp::query qry(db, "SELECT data FROM dlls WHERE name = ?");
+            try {`
+                sqlite3pp::query qry(db, "SELECT data FROM dlls WHERE name = ?");
+            }
+            catch ( std::exception& except ) {
+                cout << std::format("query failed {}\n", except.what());
+            }
             qry.bind(1, name, sqlite3pp::copy);
             auto it = qry.begin();
             if (it == qry.end()) return false;
