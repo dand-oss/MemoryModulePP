@@ -132,9 +132,10 @@ NTSTATUS MemoryResolveImportTable(
 	return status;
 }
 
-HANDLE WINAPI MmRegisterImportTableResolver(
+extern "C" HANDLE WINAPI MmRegisterImportTableResolver(
 	_In_ MM_IAT_RESOLVER_ENTRY LoadLibraryProv,
-	_In_ MM_IAT_FREE_ENTRY FreeLibraryProv) {
+	_In_ MM_IAT_FREE_ENTRY FreeLibraryProv,
+	_In_ int do_append) {
 
 	HANDLE heap = RtlProcessHeap();
 	PMM_IAT_RESOLVER resolver = (PMM_IAT_RESOLVER)RtlAllocateHeap(heap, 0, sizeof(MM_IAT_RESOLVER));
@@ -145,7 +146,12 @@ HANDLE WINAPI MmRegisterImportTableResolver(
 		resolver->ReferenceCount = 1;
 		resolver->LoadLibraryProv = LoadLibraryProv;
 		resolver->FreeLibraryProv = FreeLibraryProv;
-		InsertTailList(&MmpGlobalDataPtr->MmpIat->MmpIatResolverList, &resolver->InMmpIatResolverList);
+        if (do_append) {
+            InsertTailList(&MmpGlobalDataPtr->MmpIat->MmpIatResolverList, &resolver->InMmpIatResolverList);
+        }
+        else {
+            InsertHeadList(&MmpGlobalDataPtr->MmpIat->MmpIatResolverList, &resolver->InMmpIatResolverList);
+        }
 
 		LeaveCriticalSection(&MmpGlobalDataPtr->MmpIat->MmpIatResolverListLock);
 	}
@@ -153,7 +159,7 @@ HANDLE WINAPI MmRegisterImportTableResolver(
 	return resolver;
 }
 
-_Success_(return)
+extern "C" _Success_(return)
 BOOL WINAPI MmRemoveImportTableResolver(_In_ HANDLE hMmIatResolver) {
 
 	HANDLE heap = RtlProcessHeap();
@@ -175,4 +181,17 @@ BOOL WINAPI MmRemoveImportTableResolver(_In_ HANDLE hMmIatResolver) {
 	LeaveCriticalSection(&MmpGlobalDataPtr->MmpIat->MmpIatResolverListLock);
 
 	return RtlFreeHeap(heap, 0, hMmIatResolver);
+}
+
+extern "C" void MmClearImportTableResolvers() {
+    EnterCriticalSection(&MmpGlobalDataPtr->MmpIat->MmpIatResolverListLock);
+    while (!IsListEmpty(&MmpGlobalDataPtr->MmpIat->MmpIatResolverList)) {
+        const auto entry = RemoveTailList(&MmpGlobalDataPtr->MmpIat->MmpIatResolverList);
+       if (!IsListEmpty(&MmpGlobalDataPtr->MmpIat->MmpIatResolverList)) {
+        // Don't delete head
+        const auto resolver = CONTAINING_RECORD(entry, MM_IAT_RESOLVER, InMmpIatResolverList);
+        RtlFreeHeap(RtlProcessHeap(), 0, resolver);
+       }
+    } // while
+    LeaveCriticalSection(&MmpGlobalDataPtr->MmpIat->MmpIatResolverListLock);
 }
