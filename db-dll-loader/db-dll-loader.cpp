@@ -165,6 +165,7 @@ private:
 public:
     DllLoader(const std::string& dbPath) : db(dbPath.c_str(), SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE) {
         // Register the resolver with loadDependency and FreeLibraryCallback
+        MmClearImportTableResolvers();
         resolverHandle = MmRegisterImportTableResolver(loadDependency, FreeLibraryCallback);
         if (!resolverHandle) {
             throw std::runtime_error("Failed to register import table resolver");
