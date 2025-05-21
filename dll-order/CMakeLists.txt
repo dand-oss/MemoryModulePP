@@ -36,7 +36,6 @@ set_target_properties(${exename} PROPERTIES
 )
 
 # pass path to target a_d.dll in VS debugger
-file(TO_NATIVE_PATH "$<TARGET_FILE:a>" A_DLL)
 set_target_properties(${exename} PROPERTIES
     "VS_DEBUGGER_COMMAND_ARGUMENTS"
     "glueapp_d"
