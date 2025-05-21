@@ -30,5 +30,5 @@ install(TARGETS ${exename} RUNTIME DESTINATION ${INSTALL_DIR})
 # pass path to target dll in VS debugger
 set_target_properties(${exename} PROPERTIES
     "VS_DEBUGGER_COMMAND_ARGUMENTS"
-    "--db ../../dlls.db glueapp_d"
+    "--db ../../../dlls.db glueapp_d"
 )
