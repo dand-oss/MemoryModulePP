@@ -163,7 +163,7 @@ private:
     }
 
 public:
-    DllLoader(const std::string& dbPath) : db(dbPath.c_str(), SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE) {
+    DllLoader(const std::string& dbPath) : db(dbPath.c_str(), SQLITE_OPEN_READWRITE  {
         // Register the resolver with loadDependency and FreeLibraryCallback
         MmClearImportTableResolvers();
         resolverHandle = MmRegisterImportTableResolver(loadDependency, FreeLibraryCallback);
