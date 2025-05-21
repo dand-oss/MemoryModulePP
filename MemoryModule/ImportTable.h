@@ -22,10 +22,17 @@ NTSTATUS MemoryResolveImportTable(
 	_In_ PMEMORYMODULE hMemoryModule
 );
 
+extern "C" {
+
 HANDLE WINAPI MmRegisterImportTableResolver(
 	_In_ MM_IAT_RESOLVER_ENTRY LoadLibraryProv,
-	_In_ MM_IAT_FREE_ENTRY FreeLibraryProv
+	_In_ MM_IAT_FREE_ENTRY FreeLibraryProv,
+	_In_ int do_append
 );
 
 _Success_(return)
 BOOL WINAPI MmRemoveImportTableResolver(_In_ HANDLE hMmIatResolver);
+
+void MmClearImportTableResolvers() ;
+
+}

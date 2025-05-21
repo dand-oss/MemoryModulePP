@@ -16,3 +16,7 @@ LdrQuerySystemMemoryModuleFeatures
 
 MmpGlobalDataPtr
 GetMmpGlobalDataPtr
+
+MmRegisterImportTableResolver
+MmRemoveImportTableResolver
+MmClearImportTableResolvers
