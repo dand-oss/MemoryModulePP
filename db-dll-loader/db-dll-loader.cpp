@@ -111,7 +111,7 @@ private:
         // Check if module is already loaded
         const auto existingHandle = GetModuleHandleA(lowerName.c_str());
         if (existingHandle) {
-            std::cout << std::format("<--- {} already loaded at {:#x}\n", logPrefix, reinterpret_cast<uintptr_t>(existingHandle));
+            std::cout << std::format("<--- {} already loaded at {:#x}\n\n", logPrefix, reinterpret_cast<uintptr_t>(existingHandle));
             return std::make_pair(existingHandle, dllInDb);
         }
 
@@ -127,13 +127,13 @@ private:
                 const auto blob = (*it).get<const void*>(0);
                 const auto blobSize = (*it).column_bytes(0);
                 if (blobSize > SIZE_MAX) {
-                    std::cerr << std::format("<--- {} Failed: SQLite data too large for size_t\n", logPrefix);
+                    std::cerr << std::format("<--- {} Failed: SQLite data too large for size_t\n\n", logPrefix);
                     return std::unexpected(std::format("SQLite data too large for {}", lowerName));
                 }
                 size = static_cast<size_t>(blobSize);
                 buffer = VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
                 if (!buffer) {
-                    std::cerr << std::format("<--- {} Failed to allocate memory\n", logPrefix);
+                    std::cerr << std::format("<--- {} Failed to allocate memory\n\n", logPrefix);
                     return std::unexpected(std::format("Failed to allocate memory for {}", lowerName));
                 }
                 std::memcpy(buffer, blob, size);
@@ -162,7 +162,7 @@ private:
                 std::cout << std::format("    {} not found, search PATH\n", lowerName);
                 path = FindDllInPath(inputPath);
                 if (path.empty()) {
-                    std::cerr << std::format("<--- {} Failed: {} not found in system path\n", logPrefix, lowerName);
+                    std::cerr << std::format("<--- {} Failed: {} not found in system path\n\n", logPrefix, lowerName);
                     return std::unexpected(std::format("{} not found in system path", lowerName));
                 }
                 std::cout << std::format("    {} found in system path: {}\n", lowerName, path.string());
@@ -170,7 +170,7 @@ private:
 
             const auto dllDataResult = readDllFromFile(path);
             if (!dllDataResult) {
-                std::cerr << std::format("<--- {} Failed to read DLL data for {}: {}\n", logPrefix, path.string(), dllDataResult.error().message());
+                std::cerr << std::format("<--- {} Failed to read DLL data for {}: {}\n\n", logPrefix, path.string(), dllDataResult.error().message());
                 return std::unexpected(std::format("Failed to read DLL data for {}: {}", path.string(), dllDataResult.error().message()));
             }
             buffer = dllDataResult->first;
@@ -181,7 +181,7 @@ private:
         std::cout << std::format("    calling LoadLibraryMemory - may recurse\n");
         const auto handle = LoadLibraryMemory(buffer);
         if (!handle) {
-            std::cerr << std::format("<--- {} (Error: {})\n", logPrefix, GetLastError());
+            std::cerr << std::format("<--- {} (Error: {})\n\n", logPrefix, GetLastError());
             VirtualFree(func_spec, 0, MEM_RELEASE);
             return nullptr ;
         }
@@ -215,11 +215,11 @@ public:
 
         const auto result = loadDllData(dllName, dbPath, func_spec);
         if (!result) {
-            std::cerr << std::format("<--- {} Failed: {}\n", func_spec, result.error());
+            std::cerr << std::format("<--- {} Failed: {}\n\n", func_spec, result.error());
             return nullptr;
         }
 
-        std::cout << std::format("<--- {} Successfully loaded from {} at {:#x}\n",
+        std::cout << std::format("<--- {} Successfully loaded from {} at {:#x}\n\n",
             func_spec, result->second ? "database" : "filesystem", reinterpret_cast<uintptr_t>(result->first));
         return result->first;
     }
@@ -239,11 +239,11 @@ public:
 
         const auto result = loadDllData(dllName, dbPath, func_spec);
         if (!result) {
-            std::cerr << std::format("<--- {} Failed: {}\n", func_spec, result.error());
+            std::cerr << std::format("<--- {} Failed: {}\n\n", func_spec, result.error());
             return nullptr;
         }
 
-        std::cout << std::format("<--- {} Successfully loaded from {} at {:#x}\n",
+        std::cout << std::format("<--- {} Successfully loaded from {} at {:#x}\n\n",
             func_spec, result->second ? "database" : "filesystem", reinterpret_cast<uintptr_t>(result->first));
         return result->first;
     }
