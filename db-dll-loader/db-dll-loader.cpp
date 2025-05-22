@@ -23,13 +23,9 @@ namespace fs = std::filesystem;
 #endif
 
 // Converts a string to lowercase
-static std::string toLowerCase(const std::string& input) {
+static std::string toLowerCase(LPCSTR input) {
     std::string result(input);
-    std::transform(
-        result.begin(),
-        result.end(),
-        result.begin(),
-        ::tolower);
+    std::transform(result.begin(), result.end(), result.begin(), ::tolower);
     return result;
 }
 
@@ -100,15 +96,98 @@ private:
     static std::string dbPath; // Static member to store database path
     HANDLE resolverHandle;
 
+    // Common logic to load DLL data from database or filesystem
+    static std::expected<std::pair<HMODULE, bool>, std::string> loadDllData(LPCSTR dllName, const std::string& dbPath, const std::string& logPrefix) {
+        std::string lowerName = toLowerCase(dllName);
+        bool dllInDb = false;
+        LPVOID buffer = nullptr;
+        size_t size = 0;
+
+        // Check if module is already loaded
+        const auto existingHandle = GetModuleHandleA(lowerName.c_str());
+        if (existingHandle) {
+            std::cout << std::format("<--- {} already loaded at {:#x}\n", logPrefix, reinterpret_cast<uintptr_t>(existingHandle));
+            return std::make_pair(existingHandle, dllInDb);
+        }
+
+        // Try database
+        try {
+            sqlite3pp::database db(dbPath.c_str(), SQLITE_OPEN_READONLY);
+            std::cout << std::format("    {} query for {}\n", dbPath, lowerName);
+
+            sqlite3pp::query qry(db, "SELECT data FROM dlls WHERE name = ?");
+            qry.bind(1, lowerName, sqlite3pp::copy);
+            const auto& it = qry.begin();
+            if (it != qry.end()) {
+                const auto blob = (*it).get<const void*>(0);
+                const auto blobSize = (*it).column_bytes(0);
+                if (blobSize > SIZE_MAX) {
+                    std::cerr << std::format("<--- {} Failed: SQLite data too large for size_t\n", logPrefix);
+                    return std::unexpected(std::format("SQLite data too large for {}", lowerName));
+                }
+                size = static_cast<size_t>(blobSize);
+                buffer = VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+                if (!buffer) {
+                    std::cerr << std::format("<--- {} Failed to allocate memory\n", logPrefix);
+                    return std::unexpected(std::format("Failed to allocate memory for {}", lowerName));
+                }
+                std::memcpy(buffer, blob, size);
+                dllInDb = true;
+                std::cout << std::format("    Loaded {} bytes from database for {}\n", size, lowerName);
+            } else {
+                std::cout << std::format("    DLL {} not found in database\n", lowerName);
+            }
+        } catch (const sqlite3pp::database_error& e) {
+            std::cerr << std::format("    Database error in load: {}\n", e.what());
+        }
+
+        // Fallback to filesystem
+        if (!buffer) {
+            std::cout << std::format("    {} falling back to filesystem\n", lowerName);
+
+            std::string inputPath(lowerName);
+            if (fs::path(inputPath).extension() != ".dll" && fs::path(inputPath).extension() != ".DLL") {
+                inputPath = std::format("{}.dll", lowerName);
+            }
+
+            fs::path path(inputPath);
+            if (fs::exists(path)) {
+                std::cout << std::format("    {} found: {}\n", lowerName, path.string());
+            } else {
+                std::cout << std::format("    {} not found, search PATH\n", lowerName);
+                path = FindDllInPath(inputPath);
+                if (path.empty()) {
+                    std::cerr << std::format("<--- {} Failed: {} not found in system path\n", logPrefix, lowerName);
+                    return std::unexpected(std::format("{} not found in system path", lowerName));
+                }
+                std::cout << std::format("    {} found in system path: {}\n", lowerName, path.string());
+            }
+
+            const auto dllDataResult = readDllFromFile(path);
+            if (!dllDataResult) {
+                std::cerr << std::format("<--- {} Failed to read DLL data for {}: {}\n", logPrefix, path.string(), dllDataResult.error().message());
+                return std::unexpected(std::format("Failed to read DLL data for {}: {}", path.string(), dllDataResult.error().message()));
+            }
+            buffer = dllDataResult->first;
+            size = dllDataResult->second;
+            std::cout << std::format("    Read {} bytes from filesystem for {}\n", size, path.string());
+        }
+
+        const auto handle = LoadLibraryMemory(buffer);
+        if (!handle) {
+            std::cerr << std::format("<--- {} Failed LoadLibraryMemory (Error: {})\n", logPrefix, GetLastError());
+            VirtualFree(buffer, 0, MEM_RELEASE);
+            return std::unexpected(std::format("Failed LoadLibraryMemory for {} (Error: {})", lowerName, GetLastError()));
+        }
+
+        return std::make_pair(handle, dllInDb);
+    }
+
 public:
     DllLoader(const std::string& dbPath) {
         DllLoader::dbPath = dbPath;
         std::cout << std::format("DllLoader initialized with database path: {}\n", dbPath);
-        const auto do_append = 0 ;
-        resolverHandle = MmRegisterImportTableResolver(
-            loadDependency,
-            FreeLibraryCallback,
-            do_append);
+        resolverHandle = MmPrependImportTableResolver(loadDependency, FreeLibraryCallback);
         if (!resolverHandle) {
             throw std::runtime_error("Failed to register import table resolver");
         }
@@ -120,145 +199,39 @@ public:
         }
     }
 
-    // Loads a DLL from memory using the database
-    static HMODULE load(const std::string& dllName) {
+    // Loads a DLL from memory using the database or filesystem
+    static HMODULE load(LPCSTR dllName) {
         std::string lowerName = toLowerCase(dllName);
-        std::cout << std::format("Attempting to load DLL: {}\n", lowerName);
+        const std::string func_spec = std::format("load:{}", lowerName);
 
-        LPVOID buffer = nullptr;
-        size_t size = 0;
-        try {
-            sqlite3pp::database db(DllLoader::dbPath.c_str(), SQLITE_OPEN_READONLY);
-            std::cout << std::format("Database opened for load: {}\n", lowerName);
+        std::cout << std::format("---> {}\n", func_spec);
 
-            sqlite3pp::query qry(db, "SELECT data FROM dlls WHERE name = ?");
-            qry.bind(1, lowerName, sqlite3pp::copy);
-            const auto& it = qry.begin();
-            if (it == qry.end()) {
-                std::cerr << std::format("DLL not found in database: {}\n", lowerName);
-                return nullptr;
-            }
-            const auto blob = (*it).get<const void*>(0);
-            const auto blobSize = (*it).column_bytes(0);
-            if (blobSize > SIZE_MAX) {
-                std::cerr << std::format("Error: SQLite data for {} too large for size_t\n", lowerName);
-                return nullptr;
-            }
-            size = static_cast<size_t>(blobSize);
-            buffer = VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-            if (!buffer) {
-                std::cerr << std::format("Error: Failed to allocate memory for {}\n", lowerName);
-                return nullptr;
-            }
-            std::memcpy(buffer, blob, size);
-            std::cout << std::format("Loaded {} bytes from database for {}\n", size, lowerName);
-        } catch (const sqlite3pp::database_error& e) {
-            std::cerr << std::format("Database error in load: {}\n", e.what());
+        const auto result = loadDllData(dllName, dbPath, func_spec);
+        if (!result) {
+            std::cerr << std::format("Failed to load DLL: {}\n", lowerName);
             return nullptr;
         }
 
-        const auto hModule = LoadLibraryMemory(buffer);
-        if (!hModule) {
-            std::cerr << std::format("Failed to load DLL: {} (Error: {})\n", lowerName, GetLastError());
-            VirtualFree(buffer, 0, MEM_RELEASE);
-            return nullptr;
-        }
-
-        std::cout << std::format("<--- {} Successfully loaded DLL: {}\n", func_spec);
-
-        return hModule;
+        std::cout << std::format("<--- {} Successfully loaded from {} at {:#x}\n",
+            func_spec, result->second ? "database" : "filesystem", reinterpret_cast<uintptr_t>(result->first));
+        return result->first;
     }
 
     // Loads a dependency from the database or filesystem
     static HMODULE WINAPI loadDependency(LPCSTR lpModuleName) {
         std::string dllName = toLowerCase(lpModuleName);
+        const std::string func_spec = std::format("loadDependency:{}", dllName);
 
-        const auto func_name = "loadDependency
-        auto func_spec = std::format("{}:{}", func_name, dllName);
         std::cout << std::format("---> {}\n", func_spec);
 
-        const auto existingHandle = GetModuleHandleA(dllName.c_str());
-        if (existingHandle) {
-            std::cout << std::format("<--- {} already loaded at {:#x}\n", func_spec, reinterpret_cast<uintptr_t>(existingHandle));
-            return existingHandle;
-        }
-
-        LPVOID buffer = nullptr;
-        size_t size = 0;
-        bool dllInDb = false;
-        try {
-            sqlite3pp::database db(DllLoader::dbPath.c_str(), SQLITE_OPEN_READONLY);
-            std::cout << std::format("    {} query for {}\n", DllLoader::dbPath.c_str(), dllName);
-
-            sqlite3pp::query qry(db, "SELECT data FROM dlls WHERE name = ?");
-            qry.bind(1, dllName, sqlite3pp::copy);
-            const auto& it = qry.begin();
-            if (it != qry.end()) {
-                const auto blob = (*it).get<const void*>(0);
-                const auto blobSize = (*it).column_bytes(0);
-                if (blobSize > SIZE_MAX) {
-                    std::cerr << std::format("<--- {} Failed: SQLite data too large for size_t\n", func_spec);
-                    return nullptr;
-                }
-                size = static_cast<size_t>(blobSize);
-                buffer = VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-                if (!buffer) {
-                    std::cerr << std::format("<--- {} Failed to allocate memory\n", func_spec);
-                    return nullptr;
-                }
-                std::memcpy(buffer, blob, size);
-                dllInDb = true;
-                std::cout << std::format("    Loaded {} bytes from database for {}\n", size, dllName);
-            } else {
-                std::cout << std::format("    DLL {} not found in database\n", dllName);
-            }
-        } catch (const sqlite3pp::database_error& e) {
-            std::cerr << std::format("    Database error in loadDependency: {}\n", e.what());
-        }
-
-        // Fallback to filesystem if not found in database or database error
-        if (!buffer) {
-            std::cout << std::format("    {} falling back to filesystem\n", dllName);
-
-            std::string inputPath(dllName);
-            if (fs::path(inputPath).extension() != ".dll" && fs::path(inputPath).extension() != ".DLL") {
-                inputPath = std::format("{}.dll", dllName);
-            }
-
-            fs::path path(inputPath);
-            if (fs::exists(path)) {
-                std::cout << std::format("   {} found\n", dllName, path.string());
-            } else {
-                std::cout << std::format("   {} not found, search PATH\n", dllName);
-                path = FindDllInPath(inputPath);
-                if (path.empty()) {
-                    std::cerr << std::format("<--- {} Failed: {} not found in system path\n", func_spec);
-                    return nullptr;
-                }
-                std::cout << std::format("    {} found in system path\n", path.string());
-                func_spec = std::format("{}:{}", func_name, path.c_string());
-            }
-
-            const auto dllDataResult = readDllFromFile(path);
-            if (!dllDataResult) {
-                std::cerr << std::format("<--- {} Failed to read DLL data for {}: {}\n", func_spec, dllDataResult.error().message());
-                return nullptr;
-            }
-            buffer = dllDataResult->first;
-            size = dllDataResult->second;
-            std::cout << std::format("    Read {} bytes from filesystem for {}\n", size, path.string());
-        }
-
-        const auto handle = LoadLibraryMemory(buffer);
-        if (!handle) {
-            std::cerr << std::format("<--- {} Failed LoadLibraryMemory (Error: {})\n", func_spec, GetLastError());
-            VirtualFree(buffer, 0, MEM_RELEASE);
+        const auto result = loadDllData(lpModuleName, dbPath, func_spec);
+        if (!result) {
             return nullptr;
         }
 
-        std::cout << std::format("<--- {} Successfully loaded from {} at {:#x}\n", func_spec, dllInDb ? "database" : "filesystem", reinterpret_cast<uintptr_t>(handle));
-        }
-        return handle;
+        std::cout << std::format("<--- {} Successfully loaded from {} at {:#x}\n",
+            func_spec, result->second ? "database" : "filesystem", reinterpret_cast<uintptr_t>(result->first));
+        return result->first;
     }
 
     // Frees a loaded library
@@ -292,7 +265,7 @@ int main(int argc, char* argv[]) {
             if (fs::path(inputDllName).extension() != ".dll" && fs::path(inputDllName).extension() != ".DLL") {
                 inputDllName = std::format("{}.dll", dllName);
             }
-            const auto hModule = loader.load(inputDllName);
+            const auto hModule = loader.load(inputDllName.c_str());
             if (!hModule) {
                 std::cerr << std::format("Failed to load DLL: {}\n", inputDllName);
                 allLoaded = false;
@@ -300,7 +273,7 @@ int main(int argc, char* argv[]) {
             }
             std::cout << std::format("Successfully loaded DLL: {}\n", inputDllName);
             loadedModules.push_back(hModule);
-        } // for
+        }
 
         // Free all loaded modules
         for (const auto module : loadedModules) {
