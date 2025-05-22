@@ -23,7 +23,11 @@ asv_print_package_properties(
 set( INSTALL_DIR "${CMAKE_BINARY_DIR}/install")
 
 # common sources and libs
-target_sources(${exename} PRIVATE db-dll-loader.cpp)
+target_sources(${exename} PRIVATE
+    db-dll-loader.cpp
+    api-set.cpp
+    api-set.hpp
+    )
 
 # copy exes into install dir
 install(TARGETS ${exename} RUNTIME DESTINATION ${INSTALL_DIR})

@@ -11,6 +11,7 @@
 #include <vector>
 #include <shlwapi.h>
 #include <sqlite3pp.h>
+#include "api-set.hpp"
 #include <../MemoryModule/MemoryModule.h>
 #include <../MemoryModule/LoadDllMemoryApi.h>
 #include <../MemoryModule/ImportTable.h>
@@ -230,8 +231,8 @@ public:
 
         std::cout << std::format("---> {}\n", func_spec);
 
-        // Skip API set DLLs (e.g., api-ms-win-*) and let the default resolver handle them
-        if (dllName.find("api-ms-win-") == 0) {
+        // Quick API set check
+        if (dllName.find("api-ms-win-") == 0 || IsApiSetDllByNamespace(dllName)) {
             std::cout << std::format("    Skipping API set DLL {}, deferring to default resolver\n", dllName);
             return nullptr;
         }
