@@ -9,8 +9,29 @@
 #include <system_error>
 #include <fstream>
 #include <sqlite3pp.h>
+#include "CRC32.h" // Use cppcrc header
 
 namespace fs = std::filesystem;
+
+// Checks if a file is a valid PE DLL
+static std::expected<bool, std::error_code> isValidPeDll(const std::vector<unsigned char>& data) {
+    if (data.size() < sizeof(IMAGE_DOS_HEADER)) {
+        return std::unexpected(std::make_error_code(std::errc::invalid_argument));
+    }
+    const auto* dosHeader = reinterpret_cast<const IMAGE_DOS_HEADER*>(data.data());
+    if (dosHeader->e_magic != IMAGE_DOS_SIGNATURE) {
+        return std::unexpected(std::make_error_code(std::errc::invalid_argument));
+    }
+    if (data.size() < dosHeader->e_lfanew + sizeof(IMAGE_NT_HEADERS)) {
+        return std::unexpected(std::make_error_code(std::errc::invalid_argument));
+    }
+    const auto* ntHeader = reinterpret_cast<const IMAGE_NT_HEADERS*>(
+        data.data() + dosHeader->e_lfanew);
+    if (ntHeader->Signature != IMAGE_NT_SIGNATURE) {
+        return std::unexpected(std::make_error_code(std::errc::invalid_argument));
+    }
+    return (ntHeader->FileHeader.Characteristics & IMAGE_FILE_DLL) != 0;
+}
 
 // Reads a DLL file into a vector for import
 static std::expected<std::vector<unsigned char>, std::error_code> readDllFromFileForImport(
@@ -24,6 +45,10 @@ static std::expected<std::vector<unsigned char>, std::error_code> readDllFromFil
     if (!file.read(reinterpret_cast<char*>(dllData.data()), fileSize)) {
         return std::unexpected(std::make_error_code(std::errc::io_error));
     }
+    auto isDll = isValidPeDll(dllData);
+    if (!isDll || !isDll.value()) {
+        return std::unexpected(std::make_error_code(std::errc::invalid_argument));
+    }
     return dllData;
 }
 
@@ -36,13 +61,13 @@ static bool populateSqliteDb(
     successCount = 0;
     failureCount = 0;
 
-    if (db.execute("CREATE TABLE IF NOT EXISTS dlls (name TEXT PRIMARY KEY, data BLOB)") != SQLITE_OK) {
+    if (db.execute("CREATE TABLE IF NOT EXISTS dlls (name TEXT PRIMARY KEY, data BLOB, crc32 INTEGER)") != SQLITE_OK) {
         std::cout << std::format("SQLite error creating table: {}\n", db.error_msg());
-        failureCount = dllPaths.size(); // No DLLs can be processed
+        failureCount = dllPaths.size();
         return false;
     }
 
-    sqlite3pp::command cmd(db, "INSERT OR REPLACE INTO dlls (name, data) VALUES (?, ?)");
+    sqlite3pp::command cmd(db, "INSERT OR REPLACE INTO dlls (name, data, crc32) VALUES (?, ?, ?)");
     for (const auto& path : dllPaths) {
         auto dllData = readDllFromFileForImport(path);
         if (!dllData) {
@@ -53,8 +78,13 @@ static bool populateSqliteDb(
         const std::string dllName(path.filename().string());
         std::string lowerName(dllName);
         std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+        CRC32 crc32; // Use cppcrc
+        crc32.add(dllData->data(), dllData->size());
+        uint32_t crc32Value = crc32.getHash();
+        std::cout << std::format("Computed CRC32 for {}: {:#x}, BLOB size: {} bytes\n", lowerName, crc32Value, dllData->size()); // Print checksum and size
         cmd.bind(1, lowerName, sqlite3pp::copy);
         cmd.bind(2, dllData->data(), static_cast<int>(dllData->size()), sqlite3pp::nocopy);
+        cmd.bind(3, static_cast<long long>(crc32Value));
         if (cmd.execute() != SQLITE_OK) {
             std::cout << std::format("Error: Failed to insert {} into database: {}\n", lowerName, db.error_msg());
             ++failureCount;
@@ -62,7 +92,7 @@ static bool populateSqliteDb(
             continue;
         }
         cmd.reset();
-        std::cout << std::format("Added {} to SQLite database\n", lowerName);
+        std::cout << std::format("Imported {} (crc32: {:#x}, size: {} bytes)\n", lowerName, crc32Value, dllData->size());
         ++successCount;
     }
     return true;
@@ -71,7 +101,7 @@ static bool populateSqliteDb(
 // Parses command-line arguments and returns DLL paths and database path
 static std::pair<std::vector<fs::path>, std::string> parseArguments(int argc, char* argv[]) {
     std::vector<fs::path> dllPaths;
-    std::string dbPath = "dlls.db"; // Default database path
+    std::string dbPath = "dlls.db";
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg(argv[i]);
@@ -128,7 +158,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // report
+    // Report
     std::cout << std::format("Successfully imported {} DLLs into SQLite database at {}\n", successCount, dbPath);
     if (failureCount) {
         std::cout << std::format("{} DLLs failed.\n", failureCount);
