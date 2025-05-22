@@ -8,6 +8,7 @@
 #include <expected>
 #include <system_error>
 #include <vector>
+#include <shlwapi.h>
 #include <sqlite3pp.h>
 #include <../MemoryModule/MemoryModule.h>
 #include <../MemoryModule/LoadDllMemoryApi.h>
@@ -28,6 +29,16 @@ static std::string toLowerCase(const std::string& input) {
         result.end(),
         result.begin(), ::tolower);
     return result;
+}
+
+// Find DLL in system path, returning std::filesystem::path
+[[nodiscard]] std::filesystem::path FindDllInPath(const std::string& dllName) noexcept {
+    std::array<char, MAX_PATH> fullPath{};
+    return dllName.size() < fullPath.size()
+        && strcpy_s(fullPath.data(), fullPath.size(), dllName.c_str()) == 0
+        && PathFindOnPathA(fullPath.data(), nullptr)
+        ? std::filesystem::path(fullPath.data())
+        : std::filesystem::path{};
 }
 
 // Reads a DLL file into a VirtualAlloc buffer
@@ -167,9 +178,7 @@ public:
         size_t size = 0;
         bool dllInDb = false;
         try {
-            sqlite3pp::database db(
-                DllLoader::dbPath.c_str(),
-                SQLITE_OPEN_READONLY);
+            sqlite3pp::database db(DllLoader::dbPath.c_str(), SQLITE_OPEN_READONLY);
             std::cout << std::format("Database opened for loadDependency: {}\n", dllName);
 
             sqlite3pp::query qry(db, "SELECT data FROM dlls WHERE name = ?");
@@ -204,7 +213,15 @@ public:
             if (fs::path(inputPath).extension() != ".dll" && fs::path(inputPath).extension() != ".DLL") {
                 inputPath = std::format("{}.dll", dllName);
             }
-            fs::path path(inputPath);
+
+            // Try to find DLL in system path
+            fs::path path = FindDllInPath(inputPath);
+            if (path.empty()) {
+                std::cerr << std::format("Error: DLL {} not found in system path\n", dllName);
+                return nullptr;
+            }
+            std::cout << std::format("DLL {} found in system path: {}\n", dllName, path.string());
+
             const auto dllDataResult = readDllFromFile(path);
             if (!dllDataResult) {
                 std::cerr << std::format("Error: Failed to read DLL data for {}: {}\n", path.string(), dllDataResult.error().message());
