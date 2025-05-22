@@ -19,47 +19,54 @@ namespace fs = std::filesystem;
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #endif
 
+// Converts a string to lowercase
+static std::string toLowerCase(const std::string& input) {
+    std::string result(input);
+    std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+    return result;
+}
+
 // Reads a DLL file into a VirtualAlloc buffer
-static std::expected<std::pair<LPVOID, size_t>, std::error_code> readDllFromFile(
-    const fs::path& path) {
+static std::expected<std::pair<LPVOID, size_t>, std::error_code> readDllFromFile( const fs::path& path) {
     FILE* filePtr;
     if (fopen_s(&filePtr, path.string().c_str(), "rb") != 0 || !filePtr) {
         return std::unexpected(std::make_error_code(std::errc::no_such_file_or_directory));
     }
     _fseeki64(filePtr, 0, SEEK_END);
-    const auto fileSize = _ftelli64(filePtr);
-    if (fileSize <= 0) {
+    const auto fileISize = _ftelli64(filePtr);
+    if (fileISize <= 0) {
         fclose(filePtr);
         return std::unexpected(std::make_error_code(std::errc::no_such_file_or_directory));
     }
-    if (fileSize > SIZE_MAX) {
+    if (fileISize > SIZE_MAX) {
         fclose(filePtr);
         return std::unexpected(std::make_error_code(std::errc::file_too_large));
     }
+    const auto fileSize = static_cast<const size_t>(fileISize) ;
     _fseeki64(filePtr, 0, SEEK_SET);
 
-    LPVOID buffer = VirtualAlloc(nullptr, static_cast<size_t>(fileSize), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    auto buffer = VirtualAlloc(nullptr, static_cast<size_t>(fileSize), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     if (!buffer) {
         fclose(filePtr);
         return std::unexpected(std::make_error_code(std::errc::not_enough_memory));
     }
 
-    if (fread(buffer, 1, static_cast<size_t>(fileSize), filePtr) != static_cast<size_t>(fileSize)) {
+    if (fread(buffer, 1, static_cast<const size_t>(fileSize), filePtr) != static_cast<const size_t>(fileSize)) {
         VirtualFree(buffer, 0, MEM_RELEASE);
         fclose(filePtr);
         return std::unexpected(std::make_error_code(std::errc::io_error));
     }
     fclose(filePtr);
 
-    return std::make_pair(buffer, static_cast<size_t>(fileSize));
+    return std::make_pair(buffer, static_cast<size_t>(const fileSize));
 }
 
 // Parses command-line arguments for database path and DLL name
 static std::pair<std::string, std::string> parseArguments(int argc, char* argv[]) {
-    std::string dbPath = "dlls.db"; // Default database path
+    std::string dbPath("dlls.db"); // Default database path
     std::string dllName;
 
-    for (int ii = 1; ii < argc; ++ii) {
+    for (auto ii = 1; ii < argc; ++ii) {
         std::string arg(argv[ii]);
         if (arg == "--db" && ii + 1 < argc) {
             dbPath = argv[++ii];
@@ -95,9 +102,8 @@ public:
     }
 
     // Loads a DLL from memory using the database
-    HMODULE load(const std::string& dllName) {
-        std::string lowerName(dllName);
-        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+    static HMODULE load(const std::string& dllName) {
+        std::string lowerName = toLowerCase(dllName);
         std::cout << std::format("Attempting to load DLL: {}\n", lowerName);
 
         LPVOID buffer = nullptr;
@@ -132,7 +138,7 @@ public:
             return nullptr;
         }
 
-        HMEMORYMODULE hModule = LoadLibraryMemory(buffer);
+        const auto hModule = LoadLibraryMemory(buffer);
         if (!hModule) {
             std::cerr << std::format("Failed to load DLL: {} (Error: {})\n", lowerName, GetLastError());
             VirtualFree(buffer, 0, MEM_RELEASE);
@@ -144,12 +150,10 @@ public:
 
     // Loads a dependency from the database or filesystem
     static HMODULE WINAPI loadDependency(LPCSTR lpModuleName) {
-        std::string dllName(lpModuleName);
-        std::transform(dllName.begin(), dllName.end(), dllName.begin(), ::tolower);
+        std::string dllName = toLowerCase(lpModuleName);
         std::cout << std::format("Attempting to load dependency: {}\n", dllName);
 
-        // Check if already loaded
-        HMODULE existingHandle = GetModuleHandleA(dllName.c_str());
+        const auto existingHandle = GetModuleHandleA(dllName.c_str());
         if (existingHandle) {
             std::cout << std::format("DLL {} already loaded at {:#x}\n", dllName, reinterpret_cast<uintptr_t>(existingHandle));
             return existingHandle;
@@ -159,7 +163,9 @@ public:
         size_t size = 0;
         bool dllInDb = false;
         try {
-            sqlite3pp::database db(DllLoader::dbPath.c_str(), SQLITE_OPEN_READONLY);
+            sqlite3pp::database db(
+                DllLoader::dbPath.c_str(),
+                SQLITE_OPEN_READONLY);
             std::cout << std::format("Database opened for loadDependency: {}\n", dllName);
 
             sqlite3pp::query qry(db, "SELECT data FROM dlls WHERE name = ?");
@@ -190,12 +196,12 @@ public:
 
         // Fallback to filesystem if not found in database or database error
         if (!buffer) {
-            std::string inputPath = dllName;
+            std::string inputPath(dllName);
             if (fs::path(inputPath).extension() != ".dll" && fs::path(inputPath).extension() != ".DLL") {
                 inputPath = std::format("{}.dll", dllName);
             }
-            fs::path path = fs::path(inputPath);
-            auto dllDataResult = readDllFromFile(path);
+            fs::path path(inputPath);
+            const auto dllDataResult = readDllFromFile(path);
             if (!dllDataResult) {
                 std::cerr << std::format("Error: Failed to read DLL data for {}: {}\n", path.string(), dllDataResult.error().message());
                 return nullptr;
@@ -205,8 +211,7 @@ public:
             std::cout << std::format("Read {} bytes from filesystem for {}\n", size, path.string());
         }
 
-        // Load DLL
-        HMEMORYMODULE handle = LoadLibraryMemory(buffer);
+        const auto handle = LoadLibraryMemory(buffer);
         if (handle) {
             std::cout << std::format("Successfully loaded {} from {} at {:#x}\n", dllName, dllInDb ? "database" : "filesystem", reinterpret_cast<uintptr_t>(handle));
         } else {
@@ -231,7 +236,7 @@ std::string DllLoader::dbPath;
 
 int main(int argc, char* argv[]) {
     // Parse arguments
-    auto [dbPath, dllName] = parseArguments(argc, argv);
+    const auto [dbPath, dllName] = parseArguments(argc, argv);
     if (dllName.empty()) {
         std::cerr << std::format("Usage: {} [--db <database_path>] <dll_name>\n", argv[0]);
         return 1;
@@ -240,11 +245,11 @@ int main(int argc, char* argv[]) {
 
     try {
         DllLoader loader(dbPath);
-        std::string inputDllName = dllName;
+        std::string inputDllName(dllName);
         if (fs::path(inputDllName).extension() != ".dll" && fs::path(inputDllName).extension() != ".DLL") {
             inputDllName = std::format("{}.dll", dllName);
         }
-        HMODULE hModule = loader.load(inputDllName);
+        const hModule = loader.load(inputDllName);
         if (!hModule) {
             std::cerr << std::format("Failed to load DLL: {}\n", inputDllName);
             return 1;
