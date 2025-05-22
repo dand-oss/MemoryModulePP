@@ -10,6 +10,7 @@
 #include <fstream>
 #include <sqlite3pp.h>
 #include <cppcrc.h>
+#include <sqlite3.h> // For version checking
 
 namespace fs = std::filesystem;
 
@@ -52,6 +53,14 @@ static std::expected<std::vector<unsigned char>, std::error_code> readDllFromFil
     return dllData;
 }
 
+// Checks if SQLite version supports ON CONFLICT (3.24.0 or later)
+static bool supportsOnConflict() {
+    const char* version = sqlite3_libversion();
+    int major, minor, patch;
+    sscanf_s(version, "%d.%d.%d", &major, &minor, &patch);
+    return (major > 3 || (major == 3 && minor >= 24));
+}
+
 // Populates SQLite database with DLL data, tracks success/failure counts
 static bool populateSqliteDb(
     sqlite3pp::database& db,
@@ -62,9 +71,12 @@ static bool populateSqliteDb(
     failureCount = 0;
 
     try {
-        sqlite3pp::command cmd(db, "INSERT INTO dlls (name, data, crc32) VALUES (?, ?, ?) "
-                                  "ON CONFLICT(name) DO UPDATE SET data = excluded.data, crc32 = excluded.crc32 "
-                                  "WHERE excluded.crc32 != dlls.crc32");
+        const char* upsertSql = supportsOnConflict()
+            ? "INSERT INTO dlls (name, data, crc32) VALUES (?, ?, ?) "
+              "ON CONFLICT(name) DO UPDATE SET data = excluded.data, crc32 = excluded.crc32 "
+              "WHERE excluded.crc32 != dlls.crc32"
+            : "INSERT OR REPLACE INTO dlls (name, data, crc32) VALUES (?, ?, ?)";
+        sqlite3pp::command cmd(db, upsertSql);
         for (const auto& path : dllPaths) {
             auto dllData = readDllFromFileForImport(path);
             if (!dllData) {
@@ -99,7 +111,8 @@ static bool populateSqliteDb(
             }
         }
     } catch (const sqlite3pp::database_error& e) {
-        std::cout << std::format("Error: Failed to prepare SQL command: {}\n", e.what());
+        std::cout << std::format("Error: Failed to prepare SQL command: {} (SQLite version: {})\n", 
+                                 e.what(), sqlite3_libversion());
         failureCount = dllPaths.size();
         return false;
     }
@@ -107,10 +120,11 @@ static bool populateSqliteDb(
     return true;
 }
 
-// Parses command-line arguments and returns DLL paths and database path
-static std::pair<std::vector<fs::path>, std::string> parseArguments(int argc, char* argv[]) {
+// Parses command-line arguments and returns DLL paths, database path, and unresolved count
+static std::tuple<std::vector<fs::path>, std::string, size_t> parseArguments(int argc, char* argv[]) {
     std::vector<fs::path> dllPaths;
     std::string dbPath = "dlls.db";
+    size_t unresolvedCount = 0;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg(argv[i]);
@@ -133,21 +147,22 @@ static std::pair<std::vector<fs::path>, std::string> parseArguments(int argc, ch
                 std::cout << std::format("Resolved {} to {}\n", inputPath, path.string());
             } else {
                 std::cout << std::format("Error: Could not find {} in PATH\n", inputPath);
+                ++unresolvedCount;
                 continue;
             }
         }
         dllPaths.push_back(path);
     }
 
-    return {dllPaths, dbPath};
+    return {dllPaths, dbPath, unresolvedCount};
 }
 
 int main(int argc, char* argv[]) {
     // Parse command-line arguments
-    const auto [dllPaths, dbPath] = parseArguments(argc, argv);
+    const auto [dllPaths, dbPath, unresolvedCount] = parseArguments(argc, argv);
 
     // Check for valid input
-    if (dllPaths.empty()) {
+    if (dllPaths.empty() && unresolvedCount == 0) {
         std::cout << std::format("Usage: {} [--db <database_path>] <dll_name> [dll_name...]\n", argv[0]);
         return 1;
     }
@@ -178,16 +193,24 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Log SQLite version
+    std::cout << std::format("Using SQLite version: {}\n", sqlite3_libversion());
+
     // Populate database with DLLs
-    if (!populateSqliteDb(db, dllPaths, successCount, failureCount)) {
-        std::cout << std::format("Error: Failed to populate SQLite database\n");
-        return 1;
+    if (!dllPaths.empty()) {
+        if (!populateSqliteDb(db, dllPaths, successCount, failureCount)) {
+            std::cout << std::format("Error: Failed to populate SQLite database\n");
+            return 1;
+        }
     }
 
     // Report
     std::cout << std::format("Successfully upserted {} DLLs into SQLite database at {}\n", successCount, dbPath);
     if (failureCount) {
-        std::cout << std::format("{} DLLs failed.\n", failureCount);
+        std::cout << std::format("{} DLLs failed to import.\n", failureCount);
+    }
+    if (unresolvedCount) {
+        std::cout << std::format("{} DLLs failed to resolve.\n", unresolvedCount);
     }
 
     return 0;
