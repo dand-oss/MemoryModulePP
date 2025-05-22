@@ -182,8 +182,7 @@ private:
         const auto handle = LoadLibraryMemory(buffer);
         if (!handle) {
             std::cerr << std::format("<--- {} (Error: {})\n\n", logPrefix, GetLastError());
-            VirtualFree(func_spec, 0, MEM_RELEASE);
-            return nullptr ;
+            VirtualFree(buffer, 0, MEM_RELEASE);
         }
 
         // Memory is managed by LoadLibraryMemory on success
