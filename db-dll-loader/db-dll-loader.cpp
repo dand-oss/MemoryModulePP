@@ -15,6 +15,7 @@
 #include <../MemoryModule/MemoryModule.h>
 #include <../MemoryModule/LoadDllMemoryApi.h>
 #include <../MemoryModule/ImportTable.h>
+#include <cppcrc.h>
 
 namespace fs = std::filesystem;
 
@@ -120,17 +121,31 @@ private:
             sqlite3pp::database db(dbPath.c_str(), SQLITE_OPEN_READONLY);
             std::cout << std::format("    {} query for {}\n", dbPath, lowerName);
 
-            sqlite3pp::query qry(db, "SELECT data FROM dlls WHERE name = ?");
+            sqlite3pp::query qry(db, "SELECT data, crc32 FROM dlls WHERE name = ?");
             qry.bind(1, lowerName, sqlite3pp::copy);
             const auto& it = qry.begin();
             if (it != qry.end()) {
                 const auto blob = (*it).get<const void*>(0);
                 const auto blobSize = (*it).column_bytes(0);
+                const auto storedCrc32 = (*it).get<long long>(1);
                 if (blobSize > SIZE_MAX) {
-                    std::cerr << std::format("<--- {} Failed: SQLite data too large for size_t\n\n", logPrefix);
-                    return std::unexpected(std::format("SQLite data too large for {}", lowerName));
+                    std::cerr << std::format("<--- {} Failed: SQLite blobSize {} ({:#x}) too large for size_t (max: {})\n\n", 
+                                             logPrefix, blobSize, blobSize, SIZE_MAX);
+                    return std::unexpected(std::format("SQLite blobSize {} too large for {}", blobSize, lowerName));
                 }
                 size = static_cast<size_t>(blobSize);
+                // Copy data to a vector for CRC32 computation
+                std::vector<unsigned char> dllData(static_cast<unsigned char*>(const_cast<void*>(blob)), 
+                                                  static_cast<unsigned char*>(const_cast<void*>(blob)) + size);
+                // Verify CRC32 using cppcrc
+                CRC32 crc32;
+                crc32.add(dllData.data(), dllData.size());
+                const auto computedCrc32 = crc32.getHash();
+                if (computedCrc32 != static_cast<uint32_t>(storedCrc32)) {
+                    std::cerr << std::format("<--- {} Failed: CRC32 mismatch for {} (stored: {:#x}, computed: {:#x})\n\n", 
+                                             logPrefix, lowerName, storedCrc32, computedCrc32);
+                    return std::unexpected(std::format("CRC32 mismatch for {}", lowerName));
+                }
                 buffer = VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
                 if (!buffer) {
                     std::cerr << std::format("<--- {} Failed to allocate memory\n\n", logPrefix);
@@ -138,7 +153,7 @@ private:
                 }
                 std::memcpy(buffer, blob, size);
                 dllInDb = true;
-                std::cout << std::format("    Loaded {} bytes from database for {}\n", size, lowerName);
+                std::cout << std::format("    Loaded {} bytes from database for {} (crc32: {:#x})\n", size, lowerName, storedCrc32);
             } else {
                 std::cout << std::format("    DLL {} not found in database\n", lowerName);
             }
