@@ -4,6 +4,7 @@
 #include <iostream>
 #include <format>
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <expected>
 #include <system_error>
@@ -27,12 +28,13 @@ static std::string toLowerCase(const std::string& input) {
     std::transform(
         result.begin(),
         result.end(),
-        result.begin(), ::tolower);
+        result.begin(),
+        ::tolower);
     return result;
 }
 
 // Find DLL in system path, returning std::filesystem::path
-[[nodiscard]] std::filesystem::path FindDllInPath(const std::string& dllName) noexcept {
+[[nodiscard]] static std::filesystem::path FindDllInPath(const std::string& dllName) noexcept {
     std::array<char, MAX_PATH> fullPath{};
     return dllName.size() < fullPath.size()
         && strcpy_s(fullPath.data(), fullPath.size(), dllName.c_str()) == 0
@@ -214,13 +216,17 @@ public:
                 inputPath = std::format("{}.dll", dllName);
             }
 
-            // Try to find DLL in system path
-            fs::path path = FindDllInPath(inputPath);
-            if (path.empty()) {
-                std::cerr << std::format("Error: DLL {} not found in system path\n", dllName);
-                return nullptr;
+            fs::path path = inputPath;
+            if (fs::exists(path)) {
+                std::cout << std::format("DLL {} found at local path: {}\n", dllName, path.string());
+            } else {
+                path = FindDllInPath(inputPath);
+                if (path.empty()) {
+                    std::cerr << std::format("Error: DLL {} not found in system path\n", dllName);
+                    return nullptr;
+                }
+                std::cout << std::format("DLL {} found in system path: {}\n", dllName, path.string());
             }
-            std::cout << std::format("DLL {} found in system path: {}\n", dllName, path.string());
 
             const auto dllDataResult = readDllFromFile(path);
             if (!dllDataResult) {
