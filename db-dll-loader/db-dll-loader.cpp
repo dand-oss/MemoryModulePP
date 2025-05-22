@@ -104,9 +104,11 @@ public:
     DllLoader(const std::string& dbPath) {
         DllLoader::dbPath = dbPath;
         std::cout << std::format("DllLoader initialized with database path: {}\n", dbPath);
-        // Register the resolver with loadDependency and FreeLibraryCallback
-        MmClearImportTableResolvers();
-        resolverHandle = MmRegisterImportTableResolver(loadDependency, FreeLibraryCallback);
+        const auto do_append = 0 ;
+        resolverHandle = MmRegisterImportTableResolver(
+            loadDependency,
+            FreeLibraryCallback,
+            do_append);
         if (!resolverHandle) {
             throw std::runtime_error("Failed to register import table resolver");
         }
@@ -288,7 +290,7 @@ int main(int argc, char* argv[]) {
             }
             std::cout << std::format("Successfully loaded DLL: {}\n", inputDllName);
             loadedModules.push_back(hModule);
-        }
+        } // for
 
         // Free all loaded modules
         for (const auto module : loadedModules) {
