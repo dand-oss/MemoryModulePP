@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <expected>
 #include <system_error>
+#include <vector>
 #include <sqlite3pp.h>
 #include <../MemoryModule/MemoryModule.h>
 #include <../MemoryModule/LoadDllMemoryApi.h>
@@ -30,7 +31,7 @@ static std::string toLowerCase(const std::string& input) {
 }
 
 // Reads a DLL file into a VirtualAlloc buffer
-static std::expected<std::pair<LPVOID, size_t>, std::error_code> readDllFromFile( const fs::path& path) {
+static std::expected<std::pair<LPVOID, size_t>, std::error_code> readDllFromFile(const fs::path& path) {
     FILE* filePtr;
     if (fopen_s(&filePtr, path.string().c_str(), "rb") != 0 || !filePtr) {
         return std::unexpected(std::make_error_code(std::errc::no_such_file_or_directory));
@@ -45,7 +46,7 @@ static std::expected<std::pair<LPVOID, size_t>, std::error_code> readDllFromFile
         fclose(filePtr);
         return std::unexpected(std::make_error_code(std::errc::file_too_large));
     }
-    const auto fileSize = static_cast<const size_t>(fileISize) ;
+    const auto fileSize = static_cast<const size_t>(fileISize);
     _fseeki64(filePtr, 0, SEEK_SET);
 
     auto buffer = VirtualAlloc(nullptr, static_cast<size_t>(fileSize), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
@@ -64,10 +65,10 @@ static std::expected<std::pair<LPVOID, size_t>, std::error_code> readDllFromFile
     return std::make_pair(buffer, fileSize);
 }
 
-// Parses command-line arguments for database path and DLL name
-static std::pair<std::string, std::string> parseArguments(int argc, char* argv[]) {
+// Parses command-line arguments for database path and list of DLL names
+static std::pair<std::string, std::vector<std::string>> parseArguments(int argc, char* argv[]) {
     std::string dbPath("dlls.db"); // Default database path
-    std::string dllName;
+    std::vector<std::string> dllNames;
 
     for (auto ii = 1; ii < argc; ++ii) {
         std::string arg(argv[ii]);
@@ -75,10 +76,10 @@ static std::pair<std::string, std::string> parseArguments(int argc, char* argv[]
             dbPath = argv[++ii];
             continue;
         }
-        dllName = arg;
+        dllNames.emplace_back(arg);
     }
 
-    return {dbPath, dllName};
+    return {dbPath, dllNames};
 }
 
 class DllLoader {
@@ -239,30 +240,41 @@ std::string DllLoader::dbPath;
 
 int main(int argc, char* argv[]) {
     // Parse arguments
-    const auto [dbPath, dllName] = parseArguments(argc, argv);
-    if (dllName.empty()) {
-        std::cerr << std::format("Usage: {} [--db <database_path>] <dll_name>\n", argv[0]);
+    const auto [dbPath, dllNames] = parseArguments(argc, argv);
+    if (dllNames.empty()) {
+        std::cerr << std::format("Usage: {} [--db <database_path>] <dll_name> [<dll_name> ...]\n", argv[0]);
         return 1;
     }
-    std::cout << std::format("Starting with database path: {}, DLL: {}\n", dbPath, dllName);
+    std::cout << std::format("Starting with database path: {}, DLLs: {}\n", dbPath, dllNames.size());
 
     try {
         DllLoader loader(dbPath);
-        std::string inputDllName(dllName);
-        if (fs::path(inputDllName).extension() != ".dll" && fs::path(inputDllName).extension() != ".DLL") {
-            inputDllName = std::format("{}.dll", dllName);
+        bool allLoaded = true;
+        std::vector<HMODULE> loadedModules;
+
+        for (const auto& dllName : dllNames) {
+            std::string inputDllName(dllName);
+            if (fs::path(inputDllName).extension() != ".dll" && fs::path(inputDllName).extension() != ".DLL") {
+                inputDllName = std::format("{}.dll", dllName);
+            }
+            const auto hModule = loader.load(inputDllName);
+            if (!hModule) {
+                std::cerr << std::format("Failed to load DLL: {}\n", inputDllName);
+                allLoaded = false;
+                continue;
+            }
+            std::cout << std::format("Successfully loaded DLL: {}\n", inputDllName);
+            loadedModules.push_back(hModule);
         }
-        const auto hModule = loader.load(inputDllName);
-        if (!hModule) {
-            std::cerr << std::format("Failed to load DLL: {}\n", inputDllName);
-            return 1;
+
+        // Free all loaded modules
+        for (const auto module : loadedModules) {
+            FreeLibraryMemory(module);
         }
-        std::cout << std::format("Successfully loaded DLL: {}\n", inputDllName);
-        FreeLibraryMemory(hModule);
+
+        return allLoaded ? 0 : 1;
     } catch (const std::exception& e) {
         std::cerr << std::format("Error: {}\n", e.what());
         return 1;
     }
-
-    return 0;
 }
