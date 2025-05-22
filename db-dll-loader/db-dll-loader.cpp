@@ -181,9 +181,9 @@ private:
         std::cout << std::format("    calling LoadLibraryMemory - may recurse\n");
         const auto handle = LoadLibraryMemory(buffer);
         if (!handle) {
-            std::cerr << std::format("<--- {} Failed LoadLibraryMemory (Error: {})\n", logPrefix, GetLastError());
-            VirtualFree(buffer, 0, MEM_RELEASE);
-            return std::unexpected(std::format("Failed LoadLibraryMemory for {} (Error: {})", lowerName, GetLastError()));
+            std::cerr << std::format("<--- {} (Error: {})\n", logPrefix, GetLastError());
+            VirtualFree(func_spec, 0, MEM_RELEASE);
+            return nullptr ;
         }
 
         // Memory is managed by LoadLibraryMemory on success
