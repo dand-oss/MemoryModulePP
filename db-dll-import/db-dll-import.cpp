@@ -57,7 +57,10 @@ static std::expected<std::vector<unsigned char>, std::error_code> readDllFromFil
 static bool supportsOnConflict() {
     const char* version = sqlite3_libversion();
     int major, minor, patch;
-    sscanf_s(version, "%d.%d.%d", &major, &minor, &patch);
+    if (sscanf_s(version, "%d.%d.%d", &major, &minor, &patch) != 3) {
+        std::cout << "Warning: Could not parse SQLite version: " << version << "\n";
+        return false;
+    }
     return (major > 3 || (major == 3 && minor >= 24));
 }
 
@@ -70,13 +73,44 @@ static bool populateSqliteDb(
     successCount = 0;
     failureCount = 0;
 
+    // Check table existence
+    try {
+        sqlite3pp::query check(db, "SELECT name FROM sqlite_master WHERE type='table' AND name='dlls'");
+        if (check.begin() == check.end()) {
+            std::cout << "Table 'dlls' not found. Creating...\n";
+            if (db.execute("CREATE TABLE dlls (name TEXT PRIMARY KEY, data BLOB, crc32 INTEGER)") != SQLITE_OK) {
+                std::cout << "Error: Failed to create table: " << db.error_msg() << "\n";
+                return false;
+            }
+        } else {
+            std::cout << "Table 'dlls' exists.\n";
+        }
+    } catch (const sqlite3pp::database_error& e) {
+        std::cout << "Error: Table check failed: " << e.what() << "\n";
+        return false;
+    }
+
+    // Check database integrity
+    try {
+        sqlite3pp::query integrity(db, "PRAGMA integrity_check");
+        auto it = integrity.begin();
+        if (it != integrity.end() && std::strcmp((*it).get<char const*>(0), "ok") != 0) {
+            std::cout << "Error: Database integrity check failed: " << (*it).get<char const*>(0) << "\n";
+            return false;
+        }
+    } catch (const sqlite3pp::database_error& e) {
+        std::cout << "Error: Integrity check failed: " << e.what() << "\n";
+        return false;
+    }
+
+    // Prepare upsert command
     try {
         const char* upsertSql = supportsOnConflict()
-            ? "INSERT INTO dlls (name, data, crc32) VALUES (?, ?, ?) "
-              "ON CONFLICT(name) DO UPDATE SET data = excluded.data, crc32 = excluded.crc32 "
-              "WHERE excluded.crc32 != dlls.crc32"
+            ? "INSERT INTO dlls (name, data, crc32) VALUES (?, ?, ?) ON CONFLICT(name) DO UPDATE SET data = excluded.data, crc32 = excluded.crc32 WHERE excluded.crc32 != dlls.crc32"
             : "INSERT OR REPLACE INTO dlls (name, data, crc32) VALUES (?, ?, ?)";
+        std::cout << "Preparing SQL: " << upsertSql << " (SQLite version: " << sqlite3_libversion() << ")\n";
         sqlite3pp::command cmd(db, upsertSql);
+
         for (const auto& path : dllPaths) {
             auto dllData = readDllFromFileForImport(path);
             if (!dllData) {
@@ -96,7 +130,7 @@ static bool populateSqliteDb(
                 cmd.bind(2, dllData->data(), static_cast<int>(dllData->size()), sqlite3pp::nocopy);
                 cmd.bind(3, static_cast<long long>(crc32Value));
                 if (cmd.execute() != SQLITE_OK) {
-                    std::cout << std::format("Error: Failed to upsert {} into database: {}\n", lowerName, db.error_msg());
+                    std::cout << std::format("Error: Failed to upsert {}: {}\n", lowerName, db.error_msg());
                     ++failureCount;
                     cmd.reset();
                     continue;
@@ -105,14 +139,13 @@ static bool populateSqliteDb(
                 std::cout << std::format("Upserted {} (crc32: {:#x}, size: {} bytes)\n", lowerName, crc32Value, dllData->size());
                 ++successCount;
             } catch (const sqlite3pp::database_error& e) {
-                std::cout << std::format("Error: Failed to upsert {} into database: {}\n", lowerName, e.what());
+                std::cout << std::format("Error: Failed to upsert {}: {}\n", lowerName, e.what());
                 ++failureCount;
                 cmd.reset();
             }
         }
     } catch (const sqlite3pp::database_error& e) {
-        std::cout << std::format("Error: Failed to prepare SQL command: {} (SQLite version: {})\n", 
-                                 e.what(), sqlite3_libversion());
+        std::cout << std::format("Error: Failed to prepare SQL: {} (SQLite version: {})\n", e.what(), sqlite3_libversion());
         failureCount = dllPaths.size();
         return false;
     }
@@ -174,22 +207,13 @@ int main(int argc, char* argv[]) {
     try {
         db = sqlite3pp::database(dbPath.c_str(), SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
         if (db.error_code() != SQLITE_OK) {
-            std::cout << std::format("SQLite error opening database: {}\n", db.error_msg());
+            std::cout << std::format("Error: Failed to open database {}: {}\n", dbPath, db.error_msg());
             return 1;
         }
+        // Set busy timeout to handle database locks
+        db.execute("PRAGMA busy_timeout = 5000");
     } catch (const sqlite3pp::database_error& e) {
         std::cout << std::format("Error: Failed to open database {}: {}\n", dbPath, e.what());
-        return 1;
-    }
-
-    // Create table before preparing commands
-    try {
-        if (db.execute("CREATE TABLE IF NOT EXISTS dlls (name TEXT PRIMARY KEY, data BLOB, crc32 INTEGER)") != SQLITE_OK) {
-            std::cout << std::format("SQLite error creating table: {}\n", db.error_msg());
-            return 1;
-        }
-    } catch (const sqlite3pp::database_error& e) {
-        std::cout << std::format("Error: Failed to create table: {}\n", e.what());
         return 1;
     }
 
