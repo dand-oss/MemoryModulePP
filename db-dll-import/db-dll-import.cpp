@@ -9,7 +9,7 @@
 #include <system_error>
 #include <fstream>
 #include <sqlite3pp.h>
-#include "CRC32.h" // Use cppcrc header
+#include <cppcrc.h>
 
 namespace fs = std::filesystem;
 
