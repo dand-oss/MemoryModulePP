@@ -218,7 +218,7 @@ public:
                 inputPath = std::format("{}.dll", dllName);
             }
 
-            fs::path path = inputPath;
+            fs::path path(inputPath);
             if (fs::exists(path)) {
                 std::cout << std::format("DLL {} found at local path: {}\n", dllName, path.string());
             } else {
