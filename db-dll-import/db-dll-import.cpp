@@ -62,7 +62,9 @@ static bool populateSqliteDb(
     failureCount = 0;
 
     try {
-        sqlite3pp::command cmd(db, "INSERT OR REPLACE INTO dlls (name, data, crc32) VALUES (?, ?, ?)");
+        sqlite3pp::command cmd(db, "INSERT INTO dlls (name, data, crc32) VALUES (?, ?, ?) "
+                                  "ON CONFLICT(name) DO UPDATE SET data = excluded.data, crc32 = excluded.crc32 "
+                                  "WHERE excluded.crc32 != dlls.crc32");
         for (const auto& path : dllPaths) {
             auto dllData = readDllFromFileForImport(path);
             if (!dllData) {
@@ -82,16 +84,16 @@ static bool populateSqliteDb(
                 cmd.bind(2, dllData->data(), static_cast<int>(dllData->size()), sqlite3pp::nocopy);
                 cmd.bind(3, static_cast<long long>(crc32Value));
                 if (cmd.execute() != SQLITE_OK) {
-                    std::cout << std::format("Error: Failed to insert {} into database: {}\n", lowerName, db.error_msg());
+                    std::cout << std::format("Error: Failed to upsert {} into database: {}\n", lowerName, db.error_msg());
                     ++failureCount;
                     cmd.reset();
                     continue;
                 }
                 cmd.reset();
-                std::cout << std::format("Imported {} (crc32: {:#x}, size: {} bytes)\n", lowerName, crc32Value, dllData->size());
+                std::cout << std::format("Upserted {} (crc32: {:#x}, size: {} bytes)\n", lowerName, crc32Value, dllData->size());
                 ++successCount;
             } catch (const sqlite3pp::database_error& e) {
-                std::cout << std::format("Error: Failed to insert {} into database: {}\n", lowerName, e.what());
+                std::cout << std::format("Error: Failed to upsert {} into database: {}\n", lowerName, e.what());
                 ++failureCount;
                 cmd.reset();
             }
@@ -183,7 +185,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Report
-    std::cout << std::format("Successfully imported {} DLLs into SQLite database at {}\n", successCount, dbPath);
+    std::cout << std::format("Successfully upserted {} DLLs into SQLite database at {}\n", successCount, dbPath);
     if (failureCount) {
         std::cout << std::format("{} DLLs failed.\n", failureCount);
     }
