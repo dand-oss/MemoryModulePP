@@ -61,39 +61,47 @@ static bool populateSqliteDb(
     successCount = 0;
     failureCount = 0;
 
-    if (db.execute("CREATE TABLE IF NOT EXISTS dlls (name TEXT PRIMARY KEY, data BLOB, crc32 INTEGER)") != SQLITE_OK) {
-        std::cout << std::format("SQLite error creating table: {}\n", db.error_msg());
+    try {
+        sqlite3pp::command cmd(db, "INSERT OR REPLACE INTO dlls (name, data, crc32) VALUES (?, ?, ?)");
+        for (const auto& path : dllPaths) {
+            auto dllData = readDllFromFileForImport(path);
+            if (!dllData) {
+                std::cout << std::format("Error: Failed to read {}: {}\n", path.string(), dllData.error().message());
+                ++failureCount;
+                continue;
+            }
+            const std::string dllName(path.filename().string());
+            std::string lowerName(dllName);
+            std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+            CRC32::CRC32 crc32; // Use cppcrc
+            uint32_t crc32Value = crc32.calc(dllData->data(), dllData->size(), crc32.null_crc);
+            std::cout << std::format("Computed CRC32 for {}: {:#x}, BLOB size: {} bytes\n", lowerName, crc32Value, dllData->size());
+
+            try {
+                cmd.bind(1, lowerName, sqlite3pp::copy);
+                cmd.bind(2, dllData->data(), static_cast<int>(dllData->size()), sqlite3pp::nocopy);
+                cmd.bind(3, static_cast<long long>(crc32Value));
+                if (cmd.execute() != SQLITE_OK) {
+                    std::cout << std::format("Error: Failed to insert {} into database: {}\n", lowerName, db.error_msg());
+                    ++failureCount;
+                    cmd.reset();
+                    continue;
+                }
+                cmd.reset();
+                std::cout << std::format("Imported {} (crc32: {:#x}, size: {} bytes)\n", lowerName, crc32Value, dllData->size());
+                ++successCount;
+            } catch (const sqlite3pp::database_error& e) {
+                std::cout << std::format("Error: Failed to insert {} into database: {}\n", lowerName, e.what());
+                ++failureCount;
+                cmd.reset();
+            }
+        }
+    } catch (const sqlite3pp::database_error& e) {
+        std::cout << std::format("Error: Failed to prepare SQL command: {}\n", e.what());
         failureCount = dllPaths.size();
         return false;
     }
 
-    sqlite3pp::command cmd(db, "INSERT OR REPLACE INTO dlls (name, data, crc32) VALUES (?, ?, ?)");
-    for (const auto& path : dllPaths) {
-        auto dllData = readDllFromFileForImport(path);
-        if (!dllData) {
-            std::cout << std::format("Error: Failed to read {}: {}\n", path.string(), dllData.error().message());
-            ++failureCount;
-            continue;
-        }
-        const std::string dllName(path.filename().string());
-        std::string lowerName(dllName);
-        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
-        CRC32::CRC32 crc32; // Use cppcrc
-        uint32_t crc32Value = crc32.calc(dllData->data(), dllData->size(), crc32.null_crc);
-        std::cout << std::format("Computed CRC32 for {}: {:#x}, BLOB size: {} bytes\n", lowerName, crc32Value, dllData->size());
-        cmd.bind(1, lowerName, sqlite3pp::copy);
-        cmd.bind(2, dllData->data(), static_cast<int>(dllData->size()), sqlite3pp::nocopy);
-        cmd.bind(3, static_cast<long long>(crc32Value));
-        if (cmd.execute() != SQLITE_OK) {
-            std::cout << std::format("Error: Failed to insert {} into database: {}\n", lowerName, db.error_msg());
-            ++failureCount;
-            cmd.reset();
-            continue;
-        }
-        cmd.reset();
-        std::cout << std::format("Imported {} (crc32: {:#x}, size: {} bytes)\n", lowerName, crc32Value, dllData->size());
-        ++successCount;
-    }
     return true;
 }
 
@@ -145,9 +153,26 @@ int main(int argc, char* argv[]) {
     // Initialize SQLite database
     size_t successCount = 0;
     size_t failureCount = 0;
-    sqlite3pp::database db(dbPath.c_str(), SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
-    if (db.error_code() != SQLITE_OK) {
-        std::cout << std::format("SQLite error opening database: {}\n", db.error_msg());
+    sqlite3pp::database db;
+    try {
+        db = sqlite3pp::database(dbPath.c_str(), SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
+        if (db.error_code() != SQLITE_OK) {
+            std::cout << std::format("SQLite error opening database: {}\n", db.error_msg());
+            return 1;
+        }
+    } catch (const sqlite3pp::database_error& e) {
+        std::cout << std::format("Error: Failed to open database {}: {}\n", dbPath, e.what());
+        return 1;
+    }
+
+    // Create table before preparing commands
+    try {
+        if (db.execute("CREATE TABLE IF NOT EXISTS dlls (name TEXT PRIMARY KEY, data BLOB, crc32 INTEGER)") != SQLITE_OK) {
+            std::cout << std::format("SQLite error creating table: {}\n", db.error_msg());
+            return 1;
+        }
+    } catch (const sqlite3pp::database_error& e) {
+        std::cout << std::format("Error: Failed to create table: {}\n", e.what());
         return 1;
     }
 
