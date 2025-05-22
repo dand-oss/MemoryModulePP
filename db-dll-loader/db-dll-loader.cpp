@@ -112,7 +112,8 @@ private:
         // Check if module is already loaded
         const auto existingHandle = GetModuleHandleA(lowerName.c_str());
         if (existingHandle) {
-            std::cout << std::format("<--- {} already loaded at {:#x}\n\n", logPrefix, reinterpret_cast<uintptr_t>(existingHandle));
+            std::cout << std::format("<--- {} already loaded at {:#x}\n\n",
+                logPrefix, reinterpret_cast<uintptr_t>(existingHandle));
             return std::make_pair(existingHandle, dllInDb);
         }
 
@@ -130,21 +131,28 @@ private:
                 const auto storedCrc32 = (*it).get<long long>(1);
                 if (blobSize > SIZE_MAX) {
                     std::cerr << std::format("<--- {} Failed: SQLite blobSize {} ({:#x}) too large for size_t (max: {})\n\n", 
-                                             logPrefix, blobSize, blobSize, SIZE_MAX);
+                        logPrefix, blobSize, blobSize, SIZE_MAX);
                     return std::unexpected(std::format("SQLite blobSize {} too large for {}", blobSize, lowerName));
                 }
+
                 size = static_cast<size_t>(blobSize);
                 // Copy data to a vector for CRC32 computation
-                std::vector<unsigned char> dllData(static_cast<unsigned char*>(const_cast<void*>(blob)), 
-                                                  static_cast<unsigned char*>(const_cast<void*>(blob)) + size);
+                std::vector<unsigned char> dllData(
+                    static_cast<unsigned char*>(const_cast<void*>(blob)), 
+                    static_cast<unsigned char*>(const_cast<void*>(blob)) + size);
                 // Verify CRC32 using cppcrc
                 CRC32::CRC32 crc32;
-                uint32_t computedCrc32 = crc32.calc(dllData.data(), dllData.size(), crc32.null_crc);
+                uint32_t computedCrc32 = crc32.calc(
+                    dllData.data(),
+                    dllData.size(),
+                    crc32.null_crc);
                 if (computedCrc32 != static_cast<uint32_t>(storedCrc32)) {
                     std::cerr << std::format("<--- {} Failed: CRC32 mismatch for {} (stored: {:#x}, computed: {:#x})\n\n", 
                                              logPrefix, lowerName, storedCrc32, computedCrc32);
                     return std::unexpected(std::format("CRC32 mismatch for {}", lowerName));
                 }
+
+
                 buffer = VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
                 if (!buffer) {
                     std::cerr << std::format("<--- {} Failed to allocate memory\n\n", logPrefix);
