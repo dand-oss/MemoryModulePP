@@ -8,15 +8,18 @@ target_link_libraries(${exename} PRIVATE
     shlwapi # PathFindOnPathW
     SQLite::SQLite3-shared
     ports::sqlite3pp
+    cppcrc::cppcrc
 )
 
 find_package(SQLite3 CONFIG REQUIRED)
+find_package(cppcrc CONFIG REQUIRED)
 find_port_pkg(sqlite3pp   "sqlite3pp")
 
 # Packages have LIBRARY as interface property
 asv_print_package_properties(
     SQLite::SQLite3-shared
     ports::sqlite3pp
+    cppcrc::cppcrc
     )
 
 # use install directory under build to assemble tests
