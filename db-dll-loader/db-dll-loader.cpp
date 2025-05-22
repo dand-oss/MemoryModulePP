@@ -22,7 +22,10 @@ namespace fs = std::filesystem;
 // Converts a string to lowercase
 static std::string toLowerCase(const std::string& input) {
     std::string result(input);
-    std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+    std::transform(
+        result.begin(),
+        result.end(),
+        result.begin(), ::tolower);
     return result;
 }
 
@@ -51,14 +54,14 @@ static std::expected<std::pair<LPVOID, size_t>, std::error_code> readDllFromFile
         return std::unexpected(std::make_error_code(std::errc::not_enough_memory));
     }
 
-    if (fread(buffer, 1, static_cast<const size_t>(fileSize), filePtr) != static_cast<const size_t>(fileSize)) {
+    if (fread(buffer, 1, fileSize, filePtr) != fileSize) {
         VirtualFree(buffer, 0, MEM_RELEASE);
         fclose(filePtr);
         return std::unexpected(std::make_error_code(std::errc::io_error));
     }
     fclose(filePtr);
 
-    return std::make_pair(buffer, static_cast<size_t>(const fileSize));
+    return std::make_pair(buffer, fileSize);
 }
 
 // Parses command-line arguments for database path and DLL name
@@ -114,12 +117,12 @@ public:
 
             sqlite3pp::query qry(db, "SELECT data FROM dlls WHERE name = ?");
             qry.bind(1, lowerName, sqlite3pp::copy);
-            auto it = qry.begin();
+            const auto& it = qry.begin();
             if (it == qry.end()) {
                 std::cerr << std::format("DLL not found in database: {}\n", lowerName);
                 return nullptr;
             }
-            auto blob = (*it).get<const void*>(0);
+            const auto blob = (*it).get<const void*>(0);
             const auto blobSize = (*it).column_bytes(0);
             if (blobSize > SIZE_MAX) {
                 std::cerr << std::format("Error: SQLite data for {} too large for size_t\n", lowerName);
@@ -170,9 +173,9 @@ public:
 
             sqlite3pp::query qry(db, "SELECT data FROM dlls WHERE name = ?");
             qry.bind(1, dllName, sqlite3pp::copy);
-            auto it = qry.begin();
+            const auto& it = qry.begin();
             if (it != qry.end()) {
-                auto blob = (*it).get<const void*>(0);
+                const auto blob = (*it).get<const void*>(0);
                 const auto blobSize = (*it).column_bytes(0);
                 if (blobSize > SIZE_MAX) {
                     std::cerr << std::format("Error: SQLite data for {} too large for size_t\n", dllName);
@@ -249,7 +252,7 @@ int main(int argc, char* argv[]) {
         if (fs::path(inputDllName).extension() != ".dll" && fs::path(inputDllName).extension() != ".DLL") {
             inputDllName = std::format("{}.dll", dllName);
         }
-        const hModule = loader.load(inputDllName);
+        const auto hModule = loader.load(inputDllName);
         if (!hModule) {
             std::cerr << std::format("Failed to load DLL: {}\n", inputDllName);
             return 1;
