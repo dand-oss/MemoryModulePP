@@ -11,8 +11,8 @@ target_link_libraries(${exename} PRIVATE
 )
 
 find_package(SQLite3 CONFIG REQUIRED)
+find_package(cppcrc CONFIG REQUIRED)
 find_port_pkg(sqlite3pp   "sqlite3pp")
-find_port_pkg(cppcrc   "cppcrc")
 
 # Packages have LIBRARY as interface property
 asv_print_package_properties(
