@@ -78,10 +78,9 @@ static bool populateSqliteDb(
         const std::string dllName(path.filename().string());
         std::string lowerName(dllName);
         std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
-        CRC32 crc32; // Use cppcrc
-        crc32.add(dllData->data(), dllData->size());
-        uint32_t crc32Value = crc32.getHash();
-        std::cout << std::format("Computed CRC32 for {}: {:#x}, BLOB size: {} bytes\n", lowerName, crc32Value, dllData->size()); // Print checksum and size
+        CRC32::CRC32 crc32; // Use cppcrc
+        uint32_t crc32Value = crc32.calc(dllData->data(), dllData->size(), crc32.null_crc);
+        std::cout << std::format("Computed CRC32 for {}: {:#x}, BLOB size: {} bytes\n", lowerName, crc32Value, dllData->size());
         cmd.bind(1, lowerName, sqlite3pp::copy);
         cmd.bind(2, dllData->data(), static_cast<int>(dllData->size()), sqlite3pp::nocopy);
         cmd.bind(3, static_cast<long long>(crc32Value));
