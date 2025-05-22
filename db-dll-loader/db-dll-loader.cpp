@@ -97,7 +97,11 @@ private:
     HANDLE resolverHandle;
 
     // Common logic to load DLL data from database or filesystem
-    static std::expected<std::pair<HMODULE, bool>, std::string> loadDllData(LPCSTR dllName, const std::string& dbPath, const std::string& logPrefix) {
+    static std::expected<std::pair<HMODULE, bool>, std::string> loadDllData(
+        LPCSTR dllName,
+        const std::string& dbPath,
+        const std::string& logPrefix)
+    {
         std::string lowerName = toLowerCase(dllName);
         bool dllInDb = false;
         LPVOID buffer = nullptr;
@@ -171,15 +175,17 @@ private:
             buffer = dllDataResult->first;
             size = dllDataResult->second;
             std::cout << std::format("    Read {} bytes from filesystem for {}\n", size, path.string());
-        }
+        } // !buffer
 
+        std::cerr << std::format("     calling LoadLibraryMemory - may recurse\n");
         const auto handle = LoadLibraryMemory(buffer);
         if (!handle) {
             std::cerr << std::format("<--- {} Failed LoadLibraryMemory (Error: {})\n", logPrefix, GetLastError());
-            VirtualFree(buffer, 0, MEM_RELEASE);
+            VirtualFree(buffer, 0, MEM_RELEASE); // Free memory on failure
             return std::unexpected(std::format("Failed LoadLibraryMemory for {} (Error: {})", lowerName, GetLastError()));
         }
 
+        // Memory is managed by LoadLibraryMemory on success
         return std::make_pair(handle, dllInDb);
     }
 
@@ -223,6 +229,12 @@ public:
         const std::string func_spec = std::format("loadDependency:{}", dllName);
 
         std::cout << std::format("---> {}\n", func_spec);
+
+        // Skip API set DLLs (e.g., api-ms-win-*) and let the default resolver handle them
+        if (dllName.find("api-ms-win-") == 0) {
+            std::cout << std::format("    Skipping API set DLL {}, deferring to default resolver\n", dllName);
+            return nullptr;
+        }
 
         const auto result = loadDllData(lpModuleName, dbPath, func_spec);
         if (!result) {
