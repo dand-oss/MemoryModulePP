@@ -163,19 +163,23 @@ public:
             VirtualFree(buffer, 0, MEM_RELEASE);
             return nullptr;
         }
-        std::cout << std::format("Successfully loaded DLL: {}\n", lowerName);
+
+        std::cout << std::format("<--- {} Successfully loaded DLL: {}\n", func_spec);
+
         return hModule;
     }
 
     // Loads a dependency from the database or filesystem
     static HMODULE WINAPI loadDependency(LPCSTR lpModuleName) {
-        const auto func_name = "loadDependency
         std::string dllName = toLowerCase(lpModuleName);
-        std::cout << std::format("---> {} Attempting to load dependency: {}\n", func_name, dllName);
+
+        const auto func_name = "loadDependency
+        auto func_spec = std::format("{}:{}", func_name, dllName);
+        std::cout << std::format("---> {}\n", func_spec);
 
         const auto existingHandle = GetModuleHandleA(dllName.c_str());
         if (existingHandle) {
-            std::cout << std::format("<---- DLL {} already loaded at {:#x}\n", dllName, reinterpret_cast<uintptr_t>(existingHandle));
+            std::cout << std::format("<--- {} already loaded at {:#x}\n", func_spec, reinterpret_cast<uintptr_t>(existingHandle));
             return existingHandle;
         }
 
@@ -193,13 +197,13 @@ public:
                 const auto blob = (*it).get<const void*>(0);
                 const auto blobSize = (*it).column_bytes(0);
                 if (blobSize > SIZE_MAX) {
-                    std::cerr << std::format("<---- Failed: SQLite data for {} too large for size_t\n", dllName);
+                    std::cerr << std::format("<--- {} Failed: SQLite data too large for size_t\n", func_spec);
                     return nullptr;
                 }
                 size = static_cast<size_t>(blobSize);
                 buffer = VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
                 if (!buffer) {
-                    std::cerr << std::format("<---- Failed to allocate memory for {}\n", dllName);
+                    std::cerr << std::format("<--- {} Failed to allocate memory\n", func_spec);
                     return nullptr;
                 }
                 std::memcpy(buffer, blob, size);
@@ -228,15 +232,16 @@ public:
                 std::cout << std::format("   {} not found, search PATH\n", dllName);
                 path = FindDllInPath(inputPath);
                 if (path.empty()) {
-                    std::cerr << std::format("<---- Failed: {} not found in system path\n", dllName);
+                    std::cerr << std::format("<--- {} Failed: {} not found in system path\n", func_spec);
                     return nullptr;
                 }
                 std::cout << std::format("    {} found in system path\n", path.string());
+                func_spec = std::format("{}:{}", func_name, path.c_string());
             }
 
             const auto dllDataResult = readDllFromFile(path);
             if (!dllDataResult) {
-                std::cerr << std::format("<---- Failed to read DLL data for {}: {}\n", path.string(), dllDataResult.error().message());
+                std::cerr << std::format("<--- {} Failed to read DLL data for {}: {}\n", func_spec, dllDataResult.error().message());
                 return nullptr;
             }
             buffer = dllDataResult->first;
@@ -245,12 +250,13 @@ public:
         }
 
         const auto handle = LoadLibraryMemory(buffer);
-        if (handle) {
-            std::cout << std::format("<--- Successfully loaded {} from {} at {:#x}\n", dllName, dllInDb ? "database" : "filesystem", reinterpret_cast<uintptr_t>(handle));
-        } else {
-            std::cerr << std::format("<---- Failed LoadLibraryMemory {} (Error: {})\n", dllName, GetLastError());
+        if (!handle) {
+            std::cerr << std::format("<--- {} Failed LoadLibraryMemory (Error: {})\n", func_spec, GetLastError());
             VirtualFree(buffer, 0, MEM_RELEASE);
             return nullptr;
+        }
+
+        std::cout << std::format("<--- {} Successfully loaded from {} at {:#x}\n", func_spec, dllInDb ? "database" : "filesystem", reinterpret_cast<uintptr_t>(handle));
         }
         return handle;
     }
