@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.30)
-project(lib-MemoryModule LANGUAGES CXX)
+project(MemoryModulePP LANGUAGES CXX)
 
 # Define static library target
 set(static_libname "MemoryModulePP-static")
@@ -114,7 +114,7 @@ endforeach()
 
 # Install libraries and public headers
 install(TARGETS ${static_libname} ${shared_libname}
-    EXPORT MemoryModulePPTargets
+    EXPORT ${PROJECT_NAME}Targets
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
     RUNTIME DESTINATION bin
@@ -122,34 +122,34 @@ install(TARGETS ${static_libname} ${shared_libname}
 )
 
 # Install export file
-install(EXPORT MemoryModulePPTargets
-    FILE MemoryModulePPTargets.cmake
-    NAMESPACE MemoryModulePP::
-    DESTINATION lib/cmake/MemoryModulePP
+install(EXPORT ${PROJECT_NAME}Targets
+    FILE ${PROJECT_NAME}Targets.cmake
+    NAMESPACE ${PROJECT_NAME}::
+    DESTINATION lib/cmake/${PROJECT_NAME}
 )
 
 # Generate and install CMake config file
 include(CMakePackageConfigHelpers)
 write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/MemoryModulePPConfigVersion.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
     VERSION 1.0.0
     COMPATIBILITY SameMajorVersion
 )
 
 configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/../MemoryModulePPConfig.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/MemoryModulePPConfig.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../${PROJECT_NAME}Config.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
     @ONLY
 )
 
 install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/MemoryModulePPConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/MemoryModulePPConfigVersion.cmake"
-    DESTINATION lib/cmake/MemoryModulePP
+    "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+    DESTINATION lib/cmake/${PROJECT_NAME}
 )
 
 # CPack configuration for packaging
-set(CPACK_PACKAGE_NAME "MemoryModulePP")
+set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
 set(CPACK_PACKAGE_VERSION "1.0.0")
 set(CPACK_PACKAGE_DESCRIPTION "A custom MemoryModulePP implementation")
 set(CPACK_PACKAGE_VENDOR "xAI")
