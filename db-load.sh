@@ -7,7 +7,7 @@ echo ${PATH}
 
 declare -r PROG="${EXE_DIR}/db-dll-loader.exe"
 if [ -f "${PROG}" ] ; then 
-    declare do_few='1'
+    declare do_few='0'
     if [ "${do_few}" != '0' ] ; then 
         declare -ra DLLS=(
             "I77_d.dll"
