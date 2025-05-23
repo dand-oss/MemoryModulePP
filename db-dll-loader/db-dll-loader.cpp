@@ -209,7 +209,7 @@ private:
             std::cout << std::format("    Read {} bytes for file {}\n", size, path.string());
         }
 
-        std::cout << std::format("    {} calling LoadLibraryMemory - may recurse\n", lowerName);
+        std::cout << std::format("    {} calling LoadLibraryMemory({}) - may recurse\n", lowerName, buffer);
         const auto handle = LoadLibraryMemory(buffer);
         if (!handle) {
             std::cerr << std::format("<--- {} Failed: LoadLibraryMemory handle == 0 (Error: {})\n\n", logPrefix, GetLastError());
@@ -315,7 +315,7 @@ int main(int argc, char* argv[]) {
                 allLoaded = false;
                 continue;
             }
-            std::cout << std::format("Successfully loaded DLL: {}\n", inputDllName);
+            std::cout << std::format("FINAL Successfully loaded DLL: {}\n", inputDllName);
             loadedModules.push_back(hModule);
         }
 
