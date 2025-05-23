@@ -45,5 +45,5 @@ set_target_properties(${exename} PROPERTIES
 # pass path to target a_d.dll in VS debugger
 set_target_properties(${exename} PROPERTIES
     "VS_DEBUGGER_COMMAND_ARGUMENTS"
-    "--db ../../dlls.db glueapp_d"
+    "--db ../../dlls.db dstng_firebird_d.dll"
 )
