@@ -1,3 +1,4 @@
+#define NOMINMAX
 #include <windows.h>
 #include <ntstatus.h>
 #include <string>
@@ -66,11 +67,23 @@ static std::expected<std::pair<LPVOID, size_t>, std::error_code> readDllFromFile
         return std::unexpected(std::make_error_code(std::errc::not_enough_memory));
     }
 
-    if (fread(buffer, 1, fileSize, filePtr) != fileSize) {
-        VirtualFree(buffer, 0, MEM_RELEASE);
-        fclose(filePtr);
-        return std::unexpected(std::make_error_code(std::errc::io_error));
+    size_t totalRead = 0;
+    constexpr size_t chunkSize = 1024 * 1024; // 1 MB chunks
+    char* ptr = static_cast<char*>(buffer);
+    while (totalRead < fileSize) {
+        const auto toRead = std::min(chunkSize, fileSize - totalRead);
+        const auto bytesRead = fread(ptr, 1, toRead, filePtr);
+
+        // read fail
+        if (bytesRead != toRead) {
+            VirtualFree(buffer, 0, MEM_RELEASE);
+            fclose(filePtr);
+            return std::unexpected(std::make_error_code(std::errc::io_error));
+        }
+        totalRead += bytesRead;
+        ptr += bytesRead;
     }
+
     fclose(filePtr);
 
     return std::make_pair(buffer, fileSize);
