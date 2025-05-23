@@ -155,17 +155,17 @@ private:
 
                 buffer = VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
                 if (!buffer) {
-                    std::cerr << std::format("<--- {} Failed to allocate memory\n\n", logPrefix);
-                    return std::unexpected(std::format("Failed to allocate memory for {}", lowerName));
+                    std::cerr << std::format("<--- {} Failed: VirtualAlloc()\n\n", logPrefix);
+                    return std::unexpected(std::format("Failed to VirtualAlloc() memory for {}", lowerName));
                 }
                 std::memcpy(buffer, blob, size);
                 dllInDb = true;
                 std::cout << std::format("    Loaded {} bytes from database for {} (crc32: {:#x})\n", size, lowerName, storedCrc32);
             } else {
-                std::cout << std::format("    DLL {} not found in database\n", lowerName);
+                std::cout << std::format("    {} not found in database\n", lowerName);
             }
         } catch (const sqlite3pp::database_error& e) {
-            std::cerr << std::format("    Database error in load: {}\n", e.what());
+            std::cerr << std::format("    {} Database error in load: {}\n", lowerName, e.what());
         }
 
         // Fallback to filesystem
@@ -181,7 +181,7 @@ private:
             if (fs::exists(path)) {
                 std::cout << std::format("    {} found: {}\n", lowerName, path.string());
             } else {
-                std::cout << std::format("    {} not found, search PATH\n", lowerName);
+                std::cout << std::format("    {} full path failed, searching PATH\n", path.string());
                 path = FindDllInPath(inputPath);
                 if (path.empty()) {
                     std::cerr << std::format("<--- {} Failed: {} not found in system path\n\n", logPrefix, lowerName);
@@ -192,18 +192,18 @@ private:
 
             const auto dllDataResult = readDllFromFile(path);
             if (!dllDataResult) {
-                std::cerr << std::format("<--- {} Failed to read DLL data for {}: {}\n\n", logPrefix, path.string(), dllDataResult.error().message());
+                std::cerr << std::format("<--- {} Failed: reading fil {}: {}\n\n", logPrefix, path.string(), dllDataResult.error().message());
                 return std::unexpected(std::format("Failed to read DLL data for {}: {}", path.string(), dllDataResult.error().message()));
             }
             buffer = dllDataResult->first;
             size = dllDataResult->second;
-            std::cout << std::format("    Read {} bytes from filesystem for {}\n", size, path.string());
+            std::cout << std::format("    Read {} bytes for file {}\n", size, path.string());
         }
 
-        std::cout << std::format("    calling LoadLibraryMemory - may recurse\n");
+        std::cout << std::format("    {} calling LoadLibraryMemory - may recurse\n", lowerName);
         const auto handle = LoadLibraryMemory(buffer);
         if (!handle) {
-            std::cerr << std::format("<--- {} (Error: {})\n\n", logPrefix, GetLastError());
+            std::cerr << std::format("<--- {} Failed: LoadLibraryMemory handle == 0 (Error: {})\n\n", logPrefix, GetLastError());
             VirtualFree(buffer, 0, MEM_RELEASE);
         }
 
@@ -288,7 +288,7 @@ int main(int argc, char* argv[]) {
         std::cerr << std::format("Usage: {} [--db <database_path>] <dll_name> [<dll_name> ...]\n", argv[0]);
         return 1;
     }
-    std::cout << std::format("Starting with database path: {}, DLLs: {}\n", dbPath, dllNames.size());
+    std::cout << std::format("\nStarting with database path: {}, DLLs: {}\n\n", dbPath, dllNames.size());
 
     try {
         DllLoader loader(dbPath);
