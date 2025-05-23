@@ -136,15 +136,11 @@ private:
                 }
 
                 size = static_cast<size_t>(blobSize);
-                // Copy data to a vector for CRC32 computation
-                std::vector<unsigned char> dllData(
-                    static_cast<unsigned char*>(const_cast<void*>(blob)), 
-                    static_cast<unsigned char*>(const_cast<void*>(blob)) + size);
                 // Verify CRC32 using cppcrc
                 CRC32::CRC32 crc32;
                 uint32_t computedCrc32 = crc32.calc(
-                    dllData.data(),
-                    dllData.size(),
+                    static_cast<const unsigned char*>(blob),
+                    size,
                     crc32.null_crc);
                 if (computedCrc32 != static_cast<uint32_t>(storedCrc32)) {
                     std::cerr << std::format("<--- {} Failed: CRC32 mismatch for {} (stored: {:#x}, computed: {:#x})\n\n", 
