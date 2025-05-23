@@ -238,8 +238,8 @@ public:
 
     // Loads a DLL from memory using the database or filesystem
     static HMODULE load(const std::string& dllName) {
-        std::string lowerName = toLowerCase(dllName);
-        const std::string func_spec = std::format("load:{}", lowerName);
+        const std::string lowerName(toLowerCase(dllName));
+        const std::string func_spec(std::format("load:{}", lowerName));
 
         std::cout << std::format("---> {}\n", func_spec);
 
@@ -256,8 +256,8 @@ public:
 
     // Loads a dependency from the database or filesystem
     static HMODULE WINAPI loadDependency(LPCSTR lpModuleName) {
-        std::string dllName = toLowerCase(lpModuleName);
-        const std::string func_spec = std::format("loadDependency:{}", dllName);
+        const std::string dllName(toLowerCase(lpModuleName));
+        const std::string func_spec(std::format("loadDependency:{}", dllName));
 
         std::cout << std::format("---> {}\n", func_spec);
 
