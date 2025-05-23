@@ -24,7 +24,7 @@ namespace fs = std::filesystem;
 #endif
 
 // Converts a string to lowercase
-static std::string toLowerCase(LPCSTR input) {
+static std::string toLowerCase(const std::string& input) {
     std::string result(input);
     std::transform(result.begin(), result.end(), result.begin(), ::tolower);
     return result;
@@ -99,7 +99,7 @@ private:
 
     // Common logic to load DLL data from database or filesystem
     static std::expected<std::pair<HMODULE, bool>, std::string> loadDllData(
-        LPCSTR dllName,
+        const std::string& dllName,
         const std::string& dbPath,
         const std::string& logPrefix)
     {
@@ -176,13 +176,13 @@ private:
             buffer = dllDataResult->first;
             size = dllDataResult->second;
             std::cout << std::format("    Read {} bytes from filesystem for {}\n", size, path.string());
-        } // !buffer
+        }
 
-        std::cerr << std::format("     calling LoadLibraryMemory - may recurse\n");
+        std::cout << std::format("    calling LoadLibraryMemory - may recurse\n");
         const auto handle = LoadLibraryMemory(buffer);
         if (!handle) {
             std::cerr << std::format("<--- {} Failed LoadLibraryMemory (Error: {})\n", logPrefix, GetLastError());
-            VirtualFree(buffer, 0, MEM_RELEASE); // Free memory on failure
+            VirtualFree(buffer, 0, MEM_RELEASE);
             return std::unexpected(std::format("Failed LoadLibraryMemory for {} (Error: {})", lowerName, GetLastError()));
         }
 
@@ -207,7 +207,7 @@ public:
     }
 
     // Loads a DLL from memory using the database or filesystem
-    static HMODULE load(LPCSTR dllName) {
+    static HMODULE load(const std::string& dllName) {
         std::string lowerName = toLowerCase(dllName);
         const std::string func_spec = std::format("load:{}", lowerName);
 
@@ -215,7 +215,7 @@ public:
 
         const auto result = loadDllData(dllName, dbPath, func_spec);
         if (!result) {
-            std::cerr << std::format("Failed to load DLL: {}\n", lowerName);
+            std::cerr << std::format("<--- {} Failed: {}\n", func_spec, result.error());
             return nullptr;
         }
 
@@ -237,8 +237,9 @@ public:
             return nullptr;
         }
 
-        const auto result = loadDllData(lpModuleName, dbPath, func_spec);
+        const auto result = loadDllData(dllName, dbPath, func_spec);
         if (!result) {
+            std::cerr << std::format("<--- {} Failed: {}\n", func_spec, result.error());
             return nullptr;
         }
 
@@ -278,7 +279,7 @@ int main(int argc, char* argv[]) {
             if (fs::path(inputDllName).extension() != ".dll" && fs::path(inputDllName).extension() != ".DLL") {
                 inputDllName = std::format("{}.dll", dllName);
             }
-            const auto hModule = loader.load(inputDllName.c_str());
+            const auto hModule = loader.load(inputDllName);
             if (!hModule) {
                 std::cerr << std::format("Failed to load DLL: {}\n", inputDllName);
                 allLoaded = false;
