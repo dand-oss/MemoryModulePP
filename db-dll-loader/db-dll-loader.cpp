@@ -18,6 +18,9 @@
 #include <../MemoryModule/ImportTable.h>
 #include <cppcrc.h>
 
+// NEW: Include for resource usage logging
+#include <psapi.h>
+
 namespace fs = std::filesystem;
 
 // Fallback definition for NT_SUCCESS
@@ -25,21 +28,43 @@ namespace fs = std::filesystem;
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #endif
 
-// Converts a string to lowercase
-static std::string toLowerCase(const std::string& input) {
-    std::string result(input);
-    std::transform(result.begin(), result.end(), result.begin(), ::tolower);
-    return result;
+// NEW: Log with timestamp
+static void LogWithTimestamp(const std::string& message) {
+    SYSTEMTIME st;
+    GetSystemTime(&st);
+    std::cout << std::format("[{:%Y-%m-%d %H:%M:%S}.{:03}] {}\n",
+                             st, st.wMilliseconds, message);
 }
 
-// Find DLL in system path, returning std::filesystem::path
-[[nodiscard]] static std::filesystem::path FindDllInPath(const std::string& dllName) noexcept {
-    std::array<char, MAX_PATH> fullPath{};
-    return dllName.size() < fullPath.size()
-        && strcpy_s(fullPath.data(), fullPath.size(), dllName.c_str()) == 0
-        && PathFindOnPathA(fullPath.data(), nullptr)
-        ? std::filesystem::path(fullPath.data())
-        : std::filesystem::path{};
+// NEW: Log resource usage with allocation details
+static void LogResourceUsage(const std::string& dllName, size_t size, void* buffer, void* preferredAddress = nullptr, bool isFailure = false) {
+    MEMORYSTATUSEX memStatus = { sizeof(memStatus) };
+    GlobalMemoryStatusEx(&memStatus);
+    PROCESS_MEMORY_COUNTERS pmc = { sizeof(pmc) };
+    GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc));
+    
+    LogWithTimestamp(std::format("Resource usage for {} ({}):", dllName, isFailure ? "failure" : "info"));
+    LogWithTimestamp(std::format("  DLL Size: {} bytes", size));
+    LogWithTimestamp(std::format("  Buffer Address: {:#x}", reinterpret_cast<uintptr_t>(buffer)));
+    if (preferredAddress) {
+        LogWithTimestamp(std::format("  Preferred Address: {:#x}", reinterpret_cast<uintptr_t>(preferredAddress)));
+    }
+    LogWithTimestamp(std::format("  Available Virtual Memory: {} MB", memStatus.ullAvailVirtual / (1024 * 1024)));
+    LogWithTimestamp(std::format("  Process Working Set: {} MB", pmc.WorkingSetSize / (1024 * 1024)));
+    
+    // NEW: Log memory region details
+    if (buffer) {
+        MEMORY_BASIC_INFORMATION mbi;
+        if (VirtualQuery(buffer, &mbi, sizeof(mbi))) {
+            LogWithTimestamp(std::format("  Memory Region: State={}, Type={}, Size={} bytes",
+                mbi.State == MEM_COMMIT ? "Committed" : mbi.State == MEM_RESERVE ? "Reserved" : "Free",
+                mbi.Type == MEM_IMAGE ? "Image" : mbi.Type == MEM_MAPPED ? "Mapped" : "Private",
+                mbi.RegionSize));
+        } else {
+            LogWithTimestamp(std::format("  Failed to query memory region at {:#x}: Error {}", 
+                reinterpret_cast<uintptr_t>(buffer), GetLastError()));
+        }
+    }
 }
 
 // Reads a DLL file into a VirtualAlloc buffer
@@ -111,12 +136,22 @@ private:
     static std::string dbPath; // Static member to store database path
     HANDLE resolverHandle;
 
-    // Common logic to load DLL data from database or filesystem
+    // NEW: Track recursion depth
+    static thread_local int recursionDepth;
+
+    // MODIFIED: Common logic to load DLL data from database or filesystem
     static std::expected<std::pair<HMODULE, bool>, std::string> loadDllData(
         const std::string& dllName,
         const std::string& dbPath,
         const std::string& logPrefix)
     {
+        // NEW: Increment and log recursion depth
+        recursionDepth++;
+        if (recursionDepth > 50) {
+            LogWithTimestamp(std::format("WARNING: High recursion depth ({}) for {}", recursionDepth, dllName));
+        }
+        LogWithTimestamp(std::format("Depth {}: {}", recursionDepth, logPrefix));
+
         std::string lowerName = toLowerCase(dllName);
         bool dllInDb = false;
         LPVOID buffer = nullptr;
@@ -125,15 +160,16 @@ private:
         // Check if module is already loaded
         const auto existingHandle = GetModuleHandleA(lowerName.c_str());
         if (existingHandle) {
-            std::cout << std::format("<--- {} already loaded at {:#x}\n\n",
-                logPrefix, reinterpret_cast<uintptr_t>(existingHandle));
+            LogWithTimestamp(std::format("Depth {}: <--- {} already loaded at {:#x}", 
+                recursionDepth, logPrefix, reinterpret_cast<uintptr_t>(existingHandle)));
+            recursionDepth--; // NEW: Decrement depth
             return std::make_pair(existingHandle, dllInDb);
         }
 
         // Try database
         try {
             sqlite3pp::database db(dbPath.c_str(), SQLITE_OPEN_READONLY);
-            std::cout << std::format("    {} query for {}\n", dbPath, lowerName);
+            LogWithTimestamp(std::format("Depth {}:     {} query for {}", recursionDepth, dbPath, lowerName));
 
             sqlite3pp::query qry(db, "SELECT data, crc32 FROM dlls WHERE name = ?");
             qry.bind(1, lowerName, sqlite3pp::copy);
@@ -143,8 +179,9 @@ private:
                 const auto blobSize = (*it).column_bytes(0);
                 const auto storedCrc32 = (*it).get<long long>(1);
                 if (blobSize > SIZE_MAX) {
-                    std::cerr << std::format("<--- {} Failed: SQLite blobSize {} ({:#x}) too large for size_t (max: {})\n\n", 
-                        logPrefix, blobSize, blobSize, SIZE_MAX);
+                    LogWithTimestamp(std::format("Depth {}: <--- {} Failed: SQLite blobSize {} ({:#x}) too large for size_t (max: {})", 
+                        recursionDepth, logPrefix, blobSize, blobSize, SIZE_MAX));
+                    recursionDepth--; // NEW: Decrement depth
                     return std::unexpected(std::format("SQLite blobSize {} too large for {}", blobSize, lowerName));
                 }
 
@@ -156,30 +193,40 @@ private:
                     size,
                     crc32.null_crc);
                 if (computedCrc32 != static_cast<uint32_t>(storedCrc32)) {
-                    std::cerr << std::format("<--- {} Failed: CRC32 mismatch for {} (stored: {:#x}, computed: {:#x})\n\n", 
-                                             logPrefix, lowerName, storedCrc32, computedCrc32);
+                    LogWithTimestamp(std::format("Depth {}: <--- {} Failed: CRC32 mismatch for {} (stored: {:#x}, computed: {:#x})", 
+                                             recursionDepth, logPrefix, lowerName, storedCrc32, computedCrc32));
+                    recursionDepth--; // NEW: Decrement depth
                     return std::unexpected(std::format("CRC32 mismatch for {}", lowerName));
                 }
 
-
-                buffer = VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+                // NEW: Log VirtualAlloc details
+                void* preferredAddress = nullptr; // No preferred address specified
+                buffer = VirtualAlloc(preferredAddress, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
                 if (!buffer) {
-                    std::cerr << std::format("<--- {} Failed: VirtualAlloc()\n\n", logPrefix);
+                    LogWithTimestamp(std::format("Depth {}: <--- {} Failed: VirtualAlloc() for {} bytes", 
+                        recursionDepth, logPrefix, size));
+                    LogResourceUsage(lowerName, size, nullptr, preferredAddress, true);
+                    recursionDepth--; // NEW: Decrement depth
                     return std::unexpected(std::format("Failed to VirtualAlloc() memory for {}", lowerName));
                 }
+                LogWithTimestamp(std::format("Depth {}:     VirtualAlloc: Preferred={:#x}, Allocated={:#x}, Size={} bytes, Protection=PAGE_EXECUTE_READWRITE", 
+                    recursionDepth, reinterpret_cast<uintptr_t>(preferredAddress), reinterpret_cast<uintptr_t>(buffer), size));
+                LogResourceUsage(lowerName, size, buffer, preferredAddress);
+
                 std::memcpy(buffer, blob, size);
                 dllInDb = true;
-                std::cout << std::format("    Loaded {} bytes from database for {} (crc32: {:#x})\n", size, lowerName, storedCrc32);
+                LogWithTimestamp(std::format("Depth {}:     Loaded {} bytes from database for {} (crc32: {:#x})", 
+                    recursionDepth, size, lowerName, storedCrc32));
             } else {
-                std::cout << std::format("    {} not found in database\n", lowerName);
+                LogWithTimestamp(std::format("Depth {}:     {} not found in database", recursionDepth, lowerName));
             }
         } catch (const sqlite3pp::database_error& e) {
-            std::cerr << std::format("    {} Database error in load: {}\n", lowerName, e.what());
+            LogWithTimestamp(std::format("Depth {}:     {} Database error in load: {}", recursionDepth, lowerName, e.what()));
         }
 
         // Fallback to filesystem
         if (!buffer) {
-            std::cout << std::format("    {} falling back to filesystem\n", lowerName);
+            LogWithTimestamp(std::format("Depth {}:     {} falling back to filesystem", recursionDepth, lowerName));
 
             std::string inputPath(lowerName);
             if (fs::path(inputPath).extension() != ".dll" && fs::path(inputPath).extension() != ".DLL") {
@@ -188,35 +235,52 @@ private:
 
             fs::path path(inputPath);
             if (fs::exists(path)) {
-                std::cout << std::format("    {} found: {}\n", lowerName, path.string());
+                LogWithTimestamp(std::format("Depth {}:     {} found: {}", recursionDepth, lowerName, path.string()));
             } else {
-                std::cout << std::format("    {} full path failed, searching PATH\n", path.string());
+                LogWithTimestamp(std::format("Depth {}:     {} full path failed, searching PATH", recursionDepth, path.string()));
                 path = FindDllInPath(inputPath);
                 if (path.empty()) {
-                    std::cerr << std::format("<--- {} Failed: {} not found in system path\n\n", logPrefix, lowerName);
+                    LogWithTimestamp(std::format("Depth {}: <--- {} Failed: {} not found in system path", recursionDepth, logPrefix, lowerName));
+                    recursionDepth--; // NEW: Decrement depth
                     return std::unexpected(std::format("{} not found in system path", lowerName));
                 }
-                std::cout << std::format("    {} found in system path: {}\n", lowerName, path.string());
+                LogWithTimestamp(std::format("Depth {}:     {} found in system path: {}", recursionDepth, lowerName, path.string()));
             }
 
             const auto dllDataResult = readDllFromFile(path);
             if (!dllDataResult) {
-                std::cerr << std::format("<--- {} Failed: reading fil {}: {}\n\n", logPrefix, path.string(), dllDataResult.error().message());
+                LogWithTimestamp(std::format("Depth {}: <--- {} Failed: reading file {}: {}", 
+                    recursionDepth, logPrefix, path.string(), dllDataResult.error().message()));
+                recursionDepth--; // NEW: Decrement depth
                 return std::unexpected(std::format("Failed to read DLL data for {}: {}", path.string(), dllDataResult.error().message()));
             }
             buffer = dllDataResult->first;
             size = dllDataResult->second;
-            std::cout << std::format("    Read {} bytes for file {}\n", size, path.string());
+            // NEW: Log VirtualAlloc details for filesystem
+            void* preferredAddress = nullptr;
+            LogWithTimestamp(std::format("Depth {}:     VirtualAlloc: Preferred={:#x}, Allocated={:#x}, Size={} bytes, Protection=PAGE_EXECUTE_READWRITE", 
+                recursionDepth, reinterpret_cast<uintptr_t>(preferredAddress), reinterpret_cast<uintptr_t>(buffer), size));
+            LogResourceUsage(lowerName, size, buffer, preferredAddress);
+            LogWithTimestamp(std::format("Depth {}:     Read {} bytes for file {}", recursionDepth, size, path.string()));
         }
 
-        std::cout << std::format("    {} calling LoadLibraryMemory({}) - may recurse\n", lowerName, buffer);
-        const auto handle = LoadLibraryMemory(buffer);
+        LogWithTimestamp(std::format("Depth {}:     {} calling LoadLibraryMemory({:#x}) - may recurse", 
+            recursionDepth, lowerName, reinterpret_cast<uintptr_t>(buffer)));
+        const auto handle = LoadLibraryMemory(buffer, lowerName.c_str());
         if (!handle) {
-            std::cerr << std::format("<--- {} Failed: LoadLibraryMemory handle == 0 (Error: {})\n\n", logPrefix, GetLastError());
+            DWORD error = GetLastError();
+            LogWithTimestamp(std::format("Depth {}: <--- {} Failed: LoadLibraryMemory handle == 0 (Error: {})", 
+                recursionDepth, logPrefix, error));
+            LogResourceUsage(lowerName, size, buffer, nullptr, true);
             VirtualFree(buffer, 0, MEM_RELEASE);
+            recursionDepth--; // NEW: Decrement depth
+            return std::unexpected(std::format("LoadLibraryMemory failed for {} (Error: {})", lowerName, error));
         }
 
         // Memory is managed by LoadLibraryMemory on success
+        LogWithTimestamp(std::format("Depth {}: <--- {} Successfully loaded from {} at {:#x}", 
+            recursionDepth, logPrefix, dllInDb ? "database" : "filesystem", reinterpret_cast<uintptr_t>(handle)));
+        recursionDepth--; // NEW: Decrement depth
         return std::make_pair(handle, dllInDb);
     }
 
@@ -224,7 +288,7 @@ public:
     DllLoader(const std::string& dbPath) {
         DllLoader::dbPath = dbPath;
         resolverHandle = nullptr ;
-        std::cout << std::format("DllLoader initialized with database path: {}\n", dbPath);
+        LogWithTimestamp(std::format("DllLoader initialized with database path: {}", dbPath));
         /*
         resolverHandle = MmRegisterImportTableResolver(loadDependency, FreeLibraryCallback, 0);
         if (!resolverHandle) {
@@ -244,16 +308,16 @@ public:
         const std::string lowerName(toLowerCase(dllName));
         const std::string func_spec(std::format("load:{}", lowerName));
 
-        std::cout << std::format("---> {}\n", func_spec);
+        LogWithTimestamp(std::format("---> {}", func_spec));
 
         const auto result = loadDllData(dllName, dbPath, func_spec);
         if (!result) {
-            std::cerr << std::format("<--- {} Failed: {}\n\n", func_spec, result.error());
+            LogWithTimestamp(std::format("<--- {} Failed: {}", func_spec, result.error()));
             return nullptr;
         }
 
-        std::cout << std::format("<--- {} Successfully loaded from {} at {:#x}\n\n",
-            func_spec, result->second ? "database" : "filesystem", reinterpret_cast<uintptr_t>(result->first));
+        LogWithTimestamp(std::format("<--- {} Successfully loaded from {} at {:#x}",
+            func_spec, result->second ? "database" : "filesystem", reinterpret_cast<uintptr_t>(result->first)));
         return result->first;
     }
 
@@ -262,30 +326,43 @@ public:
         const std::string dllName(toLowerCase(lpModuleName));
         const std::string func_spec(std::format("loadDependency:{}", dllName));
 
-        std::cout << std::format("---> {}\n", func_spec);
+        LogWithTimestamp(std::format("---> {}", func_spec));
 
         // Quick API set check
         if (dllName.find("api-ms-win-") == 0 || IsApiSetDllByNamespace(dllName)) {
-            std::cout << std::format("    Skipping API set DLL {}, deferring to default resolver\n", dllName);
+            LogWithTimestamp(std::format("    Skipping API set DLL {}, deferring to default resolver", dllName));
             return nullptr;
         }
 
         const auto result = loadDllData(dllName, dbPath, func_spec);
         if (!result) {
-            std::cerr << std::format("<--- {} Failed: {}\n\n", func_spec, result.error());
+            LogWithTimestamp(std::format("<--- {} Failed: {}", func_spec, result.error()));
             return nullptr;
         }
 
-        std::cout << std::format("<--- {} Successfully loaded from {} at {:#x}\n\n",
-            func_spec, result->second ? "database" : "filesystem", reinterpret_cast<uintptr_t>(result->first));
+        LogWithTimestamp(std::format("<--- {} Successfully loaded from {} at {:#x}",
+            func_spec, result->second ? "database" : "filesystem", reinterpret_cast<uintptr_t>(result->first)));
         return result->first;
     }
 
     // Frees a loaded library
     static BOOL WINAPI FreeLibraryCallback(HMODULE hModule) {
         if (hModule) {
-            return FreeLibraryMemory(hModule);
+            WCHAR modulePath[MAX_PATH];
+            if (GetModuleFileNameW(hModule, modulePath, MAX_PATH)) {
+                std::wstring path(modulePath);
+                if (path.find(L"\\Windows\\") != std::wstring::npos) {
+                    LogWithTimestamp(std::format("Skipping unload of system DLL at {:#x} ({})", 
+                        reinterpret_cast<uintptr_t>(hModule), modulePath));
+                    return FALSE;
+                }
+            }
+            BOOL result = FreeLibraryMemory(hModule);
+            LogWithTimestamp(std::format("FreeLibraryMemory for {:#x} returned {}", 
+                reinterpret_cast<uintptr_t>(hModule), result ? "TRUE" : "FALSE"));
+            return result;
         }
+        LogWithTimestamp("FreeLibraryCallback: Invalid module handle");
         return FALSE;
     }
 };
@@ -293,14 +370,17 @@ public:
 // Define static member
 std::string DllLoader::dbPath;
 
+// NEW: Initialize recursion depth
+thread_local int DllLoader::recursionDepth = 0;
+
 int main(int argc, char* argv[]) {
     // Parse arguments
     const auto [dbPath, dllNames] = parseArguments(argc, argv);
     if (dllNames.empty()) {
-        std::cerr << std::format("Usage: {} [--db <database_path>] <dll_name> [<dll_name> ...]\n", argv[0]);
+        LogWithTimestamp(std::format("Usage: {} [--db <database_path>] <dll_name> [<dll_name> ...]", argv[0]));
         return 1;
     }
-    std::cout << std::format("\nStarting with database path: {}, DLLs: {}\n\n", dbPath, dllNames.size());
+    LogWithTimestamp(std::format("\nStarting with database path: {}, DLLs: {}", dbPath, dllNames.size()));
 
     try {
         DllLoader loader(dbPath);
@@ -314,22 +394,22 @@ int main(int argc, char* argv[]) {
             }
             const auto hModule = loader.load(inputDllName);
             if (!hModule) {
-                std::cerr << std::format("Failed to load DLL: {}\n", inputDllName);
+                LogWithTimestamp(std::format("Failed to load DLL: {}", inputDllName));
                 allLoaded = false;
                 continue;
             }
-            std::cout << std::format("FINAL Successfully loaded DLL: {}\n", inputDllName);
+            LogWithTimestamp(std::format("FINAL Successfully loaded DLL: {}", inputDllName));
             loadedModules.push_back(hModule);
         }
 
         // Free all loaded modules
         for (const auto module : loadedModules) {
-            FreeLibraryMemory(module);
+            FreeLibraryCallback(module);
         }
 
         return allLoaded ? 0 : 1;
     } catch (const std::exception& e) {
-        std::cerr << std::format("Error: {}\n", e.what());
+        LogWithTimestamp(std::format("Error: {}", e.what()));
         return 1;
     }
 }
