@@ -34,6 +34,34 @@ NTSTATUS NTAPI LdrMapDllMemory(
 	return STATUS_SUCCESS;
 }
 
+// Helper function to perform SEH-protected checks without C++ unwinding
+static NTSTATUS CheckImageAndGlobalData(
+    _In_ LPVOID BufferAddress,
+    _Inout_ size_t* BufferSize,
+    _In_ DWORD dwFlags,
+   _In_ PMMP_GLOBAL_DATA MmpGlobalDataPtr,
+    _Out_ HMEMORYMODULE* BaseAddress,
+    _Out_opt_ PVOID* LdrEntry) {
+    NTSTATUS status = STATUS_SUCCESS;
+
+    __try {
+        *BaseAddress = nullptr;
+        if (LdrEntry) *LdrEntry = nullptr;
+
+        if (!RtlIsValidImageBuffer(BufferAddress, BufferSize) && !(dwFlags & LOAD_FLAGS_PASS_IMAGE_CHECK)) {
+            status = STATUS_INVALID_IMAGE_FORMAT;
+        }
+        else if (MmpGlobalDataPtr == nullptr) {
+            status = STATUS_INVALID_PARAMETER;
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        status = GetExceptionCode();
+    }
+
+    return status;
+}
+
 extern "C" NTSTATUS NTAPI LdrLoadDllMemoryExW(
 	_Out_ HMEMORYMODULE* BaseAddress,
 	_Out_opt_ PVOID* LdrEntry,
@@ -48,22 +76,12 @@ extern "C" NTSTATUS NTAPI LdrLoadDllMemoryExW(
 	PIMAGE_NT_HEADERS headers = nullptr;
 
 	if (BufferSize)return STATUS_INVALID_PARAMETER_5;
-	__try {
-		*BaseAddress = nullptr;
-		if (LdrEntry)*LdrEntry = nullptr;
 
-		if (!RtlIsValidImageBuffer(BufferAddress, &BufferSize) && !(dwFlags & LOAD_FLAGS_PASS_IMAGE_CHECK)) {
-			status = STATUS_INVALID_IMAGE_FORMAT;
-		}
-
-		if (MmpGlobalDataPtr == nullptr) {
-			status = STATUS_INVALID_PARAMETER;
-		}
-	}
-	__except (EXCEPTION_EXECUTE_HANDLER) {
-		status = GetExceptionCode();
-	}
-	if (!NT_SUCCESS(status))return status;
+	// Perform SEH-protected checks in helper function
+	status = CheckImageAndGlobalData(BufferAddress, &BufferSize, dwFlags, MmpGlobalDataPtr, BaseAddress, LdrEntry);
+	if (!NT_SUCCESS(status)) {
+		return status;
+ 	}
 
 	if (dwFlags & LOAD_FLAGS_NOT_MAP_DLL) {
 		dwFlags &= LOAD_FLAGS_NOT_MAP_DLL;
