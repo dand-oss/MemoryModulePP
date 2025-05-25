@@ -141,12 +141,9 @@ static NTSTATUS NTAPI RtlFindLdrpHandleTlsData10() {
 }
 
 static NTSTATUS NTAPI RtlFindLdrpHandleTlsData() {
-	if (MmpGlobalDataPtr->NtVersions.MajorVersion >= 10) {
-		return RtlFindLdrpHandleTlsData10();
-	}
-	else {
-		return RtlFindLdrpHandleTlsDataOld();
-	}
+    	return MmpGlobalDataPtr->NtVersions.MajorVersion >= 10
+		? RtlFindLdrpHandleTlsData10()
+		: RtlFindLdrpHandleTlsDataOld();
 }
 
 static NTSTATUS NTAPI RtlFindLdrpReleaseTlsEntry() {
