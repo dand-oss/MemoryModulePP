@@ -79,12 +79,6 @@ extern "C" NTSTATUS NTAPI LdrLoadDllMemoryExW(
 
 	std::wcerr << std::format(L"Starting LdrLoadDllMemoryExW for {}", DllName ? DllName : L"null") << std::endl;
 
-	// Skip TLS handling for dstng_firebird_d.dll to test
-	if (DllName && wcscmp(DllName, L"dstng_firebird_d.dll") == 0) {
-		dwFlags |= LOAD_FLAGS_NOT_HANDLE_TLS;
-		std::wcerr << std::format(L"Skipping TLS handling for {}", DllName) << std::endl;
-	}
-
 	if (BufferSize) return STATUS_INVALID_PARAMETER_5;
 
 	// Perform SEH-protected checks in helper function
@@ -134,12 +128,13 @@ extern "C" NTSTATUS NTAPI LdrLoadDllMemoryExW(
 		}
 	}
 
-	std::wcerr << std::format(L"Calling MemoryLoadLibrary for {}", DllName ? DllName : L"null") << std::endl;
+	std::wcerr << std::format(L"Calling MemoryLoadLibrary for {} with size {}", DllName ? DllName : L"null", BufferSize) << std::endl;
 	status = MemoryLoadLibrary(BaseAddress, BufferAddress, static_cast<DWORD>(BufferSize));
 	if (!NT_SUCCESS(status) || status == STATUS_IMAGE_MACHINE_TYPE_MISMATCH) {
 		std::wcerr << std::format(L"MemoryLoadLibrary failed for {} (Status: {:#x})", DllName ? DllName : L"null", status) << std::endl;
 		return status;
 	}
+	std::wcerr << std::format(L"MemoryLoadLibrary allocated at {:#x} for {} with protection PAGE_EXECUTE_READWRITE", reinterpret_cast<uintptr_t>(*BaseAddress), DllName ? DllName : L"null") << std::endl;
 
 	if (!(module = MapMemoryModuleHandle(*BaseAddress))) {
 		__fastfail(FAST_FAIL_FATAL_APP_EXIT);
@@ -202,7 +197,7 @@ extern "C" NTSTATUS NTAPI LdrLoadDllMemoryExW(
 	}
 
 	do {
-		std::wcerr << std::format(L"Mapping DLL for {}", DllName ? DllName : L"null") << std::endl;
+		std::wcerr << std::format(L"Mapping DLL for {} instantaneously", DllName ? DllName : L"null") << std::endl;
 		status = LdrMapDllMemory(*BaseAddress, dwFlags, DllName, DllFullName, &ModuleEntry);
 		if (!NT_SUCCESS(status)) {
 			std::wcerr << std::format(L"LdrMapDllMemory failed for {} (Status: {:#x})", DllName ? DllName : L"null", status) << std::endl;
@@ -243,6 +238,19 @@ extern "C" NTSTATUS NTAPI LdrLoadDllMemoryExW(
 			status = MmpGlobalDataPtr->MmpFunctions->_MmpHandleTlsData(ModuleEntry);
 			if (!NT_SUCCESS(status)) {
 				std::wcerr << std::format(L"_MmpHandleTlsData failed for {} (Status: {:#x})", DllName ? DllName : L"null", status) << std::endl;
+				if (headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS].Size) {
+					PIMAGE_TLS_DIRECTORY tlsDir = reinterpret_cast<PIMAGE_TLS_DIRECTORY>(
+						RtlImageRvaToVa(headers, *BaseAddress, headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS].VirtualAddress, nullptr)
+					);
+					if (tlsDir) {
+						std::wcerr << std::format(L"TLS Directory: StartAddressOfRawData=0x{:x}, EndAddressOfRawData=0x{:x}, AddressOfIndex=0x{:x}, AddressOfCallBacks=0x{:x}, SizeOfZeroFill={}",
+							tlsDir->StartAddressOfRawData, tlsDir->EndAddressOfRawData, tlsDir->AddressOfIndex, tlsDir->AddressOfCallBacks, tlsDir->SizeOfZeroFill) << std::endl;
+					} else {
+						std::wcerr << L"Failed to resolve TLS directory" << std::endl;
+					}
+				} else {
+					std::wcerr << L"No TLS directory present" << std::endl;
+				}
 				if (dwFlags & LOAD_FLAGS_NOT_FAIL_IF_HANDLE_TLS) status = 0x7fffffff;
 				if (!NT_SUCCESS(status)) break;
 			} else {
@@ -257,7 +265,6 @@ extern "C" NTSTATUS NTAPI LdrLoadDllMemoryExW(
 
 		std::wcerr << std::format(L"Executing TLS for {}", DllName ? DllName : L"null") << std::endl;
 		if (!LdrpExecuteTLS(module)) {
-			status = STATUS_DLL_INIT_FAILED;
 			std::wcerr << std::format(L"LdrpExecuteTLS failed for {} (Status: {:#x})", DllName ? DllName : L"null", status) << std::endl;
 			if (headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS].Size) {
 				std::wcerr << std::format(L"TLS directory size: {}", headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_TLS].Size) << std::endl;
@@ -269,7 +276,6 @@ extern "C" NTSTATUS NTAPI LdrLoadDllMemoryExW(
 
 		std::wcerr << std::format(L"Calling initializers for {}", DllName ? DllName : L"null") << std::endl;
 		if (!LdrpCallInitializers(module, DLL_PROCESS_ATTACH)) {
-			status = STATUS_DLL_INIT_FAILED;
 			std::wcerr << std::format(L"LdrpCallInitializers failed for {} (Status: {:#x})", DllName ? DllName : L"null", status) << std::endl;
 			if (headers->OptionalHeader.AddressOfEntryPoint) {
 				std::wcerr << std::format(L"Entry point present at: {:#x}", headers->OptionalHeader.AddressOfEntryPoint) << std::endl;
