@@ -1,4 +1,6 @@
 #include "stdafx.h"
+#include <iostream>
+#include <iomanip>
 
 #if (!MMPP_USE_TLS)
 
@@ -110,7 +112,7 @@ static NTSTATUS NTAPI RtlFindLdrpHandleTlsData10() {
 		BYTE Bytes[4];
 		DWORD Dword;
 	};
-	Converter ExceptionBlockAddress{}; // { .Dword = DWORD(ExceptionBlock - static_cast<LPBYTE>(DllBase)) };
+	Converter ExceptionBlockAddress{};
 	ExceptionBlockAddress.Dword = static_cast<DWORD>(ExceptionBlock - static_cast<LPBYTE>(DllBase));
 
 	SearchContext.Result = nullptr;
@@ -143,6 +145,7 @@ static NTSTATUS NTAPI RtlFindLdrpHandleTlsData10() {
 static NTSTATUS NTAPI RtlFindLdrpHandleTlsData() {
 	return MmpGlobalDataPtr->NtVersions.MajorVersion >= 10
 	    ? RtlFindLdrpHandleTlsData10()
+	    : RtlFindLdrpHandleTlsDataOld();
 }
 
 static NTSTATUS NTAPI RtlFindLdrpReleaseTlsEntry() {
@@ -201,7 +204,6 @@ NTSTATUS NTAPI MmpReleaseTlsEntry(_In_ PLDR_DATA_TABLE_ENTRY lpModuleEntry) {
 	union {
 		STDCALL stdcall;
 		THISCALL thiscall;
-
 		PVOID ptr;
 	}fp;
 	fp.ptr = LdrpReleaseTlsEntry;
@@ -221,15 +223,31 @@ NTSTATUS NTAPI MmpHandleTlsData(_In_ PLDR_DATA_TABLE_ENTRY lpModuleEntry) {
 	union {
 		STDCALL stdcall;
 		THISCALL thiscall;
-
 		PVOID ptr;
 	}fp;
 	fp.ptr = LdrpHandleTlsData;
 
-	if (fp.ptr) {
-		return stdcall ? fp.stdcall(lpModuleEntry) : fp.thiscall(lpModuleEntry);
+	// Log module details
+	std::wcerr << L"Handling TLS for module at 0x" << std::hex << lpModuleEntry->DllBase
+	           << L", Name: " << (lpModuleEntry->FullDllName.Buffer ? lpModuleEntry->FullDllName.Buffer : L"Unknown")
+	           << std::endl;
+
+	// Test TLS slot availability
+	DWORD tlsIndex = TlsAlloc();
+	if (tlsIndex == TLS_OUT_OF_INDEXES) {
+		DWORD error = GetLastError();
+		std::wcerr << L"TLS slot allocation failed, Error: " << error << std::endl;
+	} else {
+		std::wcerr << L"TLS slot allocated: " << tlsIndex << std::endl;
+		TlsFree(tlsIndex); // Free the test slot
 	}
-	else {
+
+	if (fp.ptr) {
+		NTSTATUS status = stdcall ? fp.stdcall(lpModuleEntry) : fp.thiscall(lpModuleEntry);
+		std::wcerr << L"LdrpHandleTlsData returned status: 0x" << std::hex << status << std::endl;
+		return status;
+	} else {
+		std::wcerr << L"LdrpHandleTlsData not found, returning STATUS_NOT_SUPPORTED" << std::endl;
 		return STATUS_NOT_SUPPORTED;
 	}
 }
