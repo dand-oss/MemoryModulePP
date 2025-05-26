@@ -133,12 +133,18 @@ BOOL NTAPI LdrpExecuteTLS(PMEMORYMODULE module) {
 }
 
 BOOL NTAPI LdrpCallInitializers(PMEMORYMODULE module, DWORD dwReason) {
-	PIMAGE_NT_HEADERS headers = RtlImageNtHeader(module->codeBase);
+	PIMAGE_NT_HEADERS headers = module && module->codeBase ? RtlImageNtHeader(module->codeBase) : nullptr;
 
-	if (headers->OptionalHeader.AddressOfEntryPoint) {
+	if (headers && headers->OptionalHeader.AddressOfEntryPoint) {
+		const auto entryPoint = reinterpret_cast<PLDR_INIT_ROUTINE>(module->codeBase + headers->OptionalHeader.AddressOfEntryPoint);
+        // Verify entry point is in executable memory
+        if (!VirtualAccessCheckNoException(entryPoint, sizeof(BYTE), PAGE_EXECUTE_READ)) {
+            return true ;
+            
+         }
 		__try {
 			// notify library about attaching to process
-			if ((reinterpret_cast<PLDR_INIT_ROUTINE>(module->codeBase + headers->OptionalHeader.AddressOfEntryPoint))(reinterpret_cast<HINSTANCE>(module->codeBase), dwReason, 0)) {
+			if (entryPoint(reinterpret_cast<HINSTANCE>(module->codeBase), dwReason, 0)) {
 				module->initialized = TRUE;
 
 				if (dwReason == DLL_PROCESS_ATTACH) {
