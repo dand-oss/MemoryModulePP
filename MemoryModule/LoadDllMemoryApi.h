@@ -32,7 +32,10 @@ extern "C" {
 	);
 
 	BOOL WINAPI FreeLibraryMemory(_In_ HMEMORYMODULE hMemoryModule);
-
+	
+    DWORD WINAPI MemoryRefCount(HMEMORYMODULE hMod) ;
+    BOOL WINAPI MemoryAddRef(HMEMORYMODULE hMod) ;
+    BOOL WINAPI MemoryDecrRef(HMEMORYMODULE hMod) ;
 }
 
 #define NtLoadDllMemory						LdrLoadDllMemory
