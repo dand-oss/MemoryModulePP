@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include <cmath>
+#include <iostream>
 
 NTSTATUS NTAPI LdrMapDllMemory(
 	_In_ HMEMORYMODULE ViewBase,
@@ -245,8 +246,19 @@ extern "C" NTSTATUS NTAPI LdrUnloadDllMemory(_In_ HMEMORYMODULE BaseAddress) {
 
 		if (count & ~1) {
 			status = RtlUpdateReferenceCount(module, FLAG_DEREFERENCE);
+			std::wcout << "MemoryModulePP:Loader:249 " 
+                       << CurEntry->BaseDllName.Buffer 
+                       << " with count "
+                       << count
+                       << " counter decremented\n";
 			break;
 		}
+
+		std::wcout << "MemoryModulePP:Loader:253 " 
+		           << CurEntry->BaseDllName.Buffer 
+				   << " with count " 
+				   << count 
+				   << " will be freed\n";
 
 		module->underUnload = true;
 		if (module->initialized) {
@@ -272,6 +284,11 @@ extern "C" NTSTATUS NTAPI LdrUnloadDllMemory(_In_ HMEMORYMODULE BaseAddress) {
 		}
 
 		if (!MemoryFreeLibrary(BaseAddress)) __fastfail(FAST_FAIL_FATAL_APP_EXIT);
+		std::wcerr << "MemoryModulePP:Loader:287 "
+		           << CurEntry->BaseDllName.Buffer
+				   << " with count "
+				   << count
+				   << " freed\n\n";
 
 	} while (false);
 
