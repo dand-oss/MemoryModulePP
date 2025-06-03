@@ -246,7 +246,7 @@ extern "C" NTSTATUS NTAPI LdrUnloadDllMemory(_In_ HMEMORYMODULE BaseAddress) {
 
 		if (count & ~1) {
 			status = RtlUpdateReferenceCount(module, FLAG_DEREFERENCE);
-			std::wcout << "MemoryModulePP:Loader:249 " 
+			std::wcout << "MemoryModulePP:Loader:LdrUnloadDllMemory:249 " 
                        << CurEntry->BaseDllName.Buffer 
                        << " with count "
                        << count
@@ -254,7 +254,7 @@ extern "C" NTSTATUS NTAPI LdrUnloadDllMemory(_In_ HMEMORYMODULE BaseAddress) {
 			break;
 		}
 
-		std::wcout << "MemoryModulePP:Loader:253 " 
+		std::wcout << "MemoryModulePP:Loader:LdrUnloadDllMemory:253 " 
 		           << CurEntry->BaseDllName.Buffer 
 				   << " with count " 
 				   << count 
@@ -284,7 +284,7 @@ extern "C" NTSTATUS NTAPI LdrUnloadDllMemory(_In_ HMEMORYMODULE BaseAddress) {
 		}
 
 		if (!MemoryFreeLibrary(BaseAddress)) __fastfail(FAST_FAIL_FATAL_APP_EXIT);
-		std::wcerr << "MemoryModulePP:Loader:287 "
+		std::wcerr << "MemoryModulePP:Loader:LdrUnloadDllMemory:287 "
 		           << CurEntry->BaseDllName.Buffer
 				   << " with count "
 				   << count
