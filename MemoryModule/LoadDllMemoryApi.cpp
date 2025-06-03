@@ -1,6 +1,24 @@
 #include "stdafx.h"
 #include <cstdlib>
 
+extern "C" DWORD WINAPI MemoryRefCount(HMEMORYMODULE hMod)
+{
+    const auto mod = MapMemoryModuleHandle(hMod) ;
+	return !mod ? 0 : mod->dwReferenceCount;
+}
+
+extern "C" BOOL WINAPI MemoryAddRef(HMEMORYMODULE hMod)
+{
+    const auto mod = MapMemoryModuleHandle(hMod) ;
+    return mod && NT_SUCCESS(RtlUpdateReferenceCount(mod, FLAG_REFERENCE));
+}
+
+extern "C" BOOL WINAPI MemoryDecrRef(HMEMORYMODULE hMod)
+{
+    const auto mod = MapMemoryModuleHandle(hMod) ;
+    return mod && NT_SUCCESS(RtlUpdateReferenceCount(mod, 0));
+}
+
 extern "C" HMEMORYMODULE WINAPI LoadLibraryMemoryExW(
 	_In_ PVOID BufferAddress,
 	_In_ size_t Reserved,
