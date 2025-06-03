@@ -1,5 +1,23 @@
 #include "stdafx.h"
 #include <cmath>
+#include <iostream>
+#include <format>
+#include <codecvt>
+
+std::string ws2s(const std::wstring& wstr)
+{
+    // assume ASCII is utf8
+    using convert_typeX = std::codecvt_utf8<wchar_t>;
+    std::wstring_convert<convert_typeX, wchar_t> converterX;
+
+    return converterX.to_bytes(wstr);
+}
+
+// Portable logging wrappers using std::format_string
+template<typename... Args>
+void logInfo(std::format_string<Args...> fmt, Args&&... args) {
+    std::cout << std::format(fmt, std::forward<Args>(args)...) << std::endl;
+}
 
 NTSTATUS NTAPI LdrMapDllMemory(
 	_In_ HMEMORYMODULE ViewBase,
@@ -243,10 +261,22 @@ extern "C" NTSTATUS NTAPI LdrUnloadDllMemory(_In_ HMEMORYMODULE BaseAddress) {
 			if (!NT_SUCCESS(status)) break;
 		}
 
+        const std::string func_name("MemoryModulePP:Loader:LdrUnloadDllMemory");
 		if (count & ~1) {
 			status = RtlUpdateReferenceCount(module, FLAG_DEREFERENCE);
+			logInfo(
+                "{}:Loader:LdrUnloadDllMemory:249 {} with count {} counter decremented\n",
+                func_name,
+                ws2s(CurEntry->BaseDllName.Buffer),
+                count );
 			break;
 		}
+
+			logInfo(
+                "{}:253 {} with count {} will be freed\n",
+                func_name,
+                ws2s(CurEntry->BaseDllName.Buffer),
+                count );
 
 		module->underUnload = true;
 		if (module->initialized) {
@@ -272,6 +302,11 @@ extern "C" NTSTATUS NTAPI LdrUnloadDllMemory(_In_ HMEMORYMODULE BaseAddress) {
 		}
 
 		if (!MemoryFreeLibrary(BaseAddress)) __fastfail(FAST_FAIL_FATAL_APP_EXIT);
+		logInfo(
+            "{}:Loader:LdrUnloadDllMemory:287 {} with count {} freed\n",
+            func_name,
+            ws2s(CurEntry->BaseDllName.Buffer),
+            count );
 
 	} while (false);
 
