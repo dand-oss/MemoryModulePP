@@ -87,6 +87,8 @@ extern "C" {
 		LPCVOID ImageFileBuffer,
 		PIMAGE_NT_HEADERS ImageHeaders
 	);
+	
+	BOOL WINAPI MemoryModuleAddRef(HMEMORYMODULE hMod);
 
 #ifdef __cplusplus
 }

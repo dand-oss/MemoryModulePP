@@ -1,6 +1,15 @@
 #include "stdafx.h"
 #include <cstdlib>
 
+extern "C" BOOL WINAPI MemoryModuleAddRef(HMEMORYMODULE hMod)
+{
+    PMEMORYMODULE mod = MapMemoryModuleHandle(hMod);
+    if (!mod) return FALSE;
+
+    NTSTATUS status = RtlUpdateReferenceCount(mod, FLAG_REFERENCE);
+    return NT_SUCCESS(status);
+}
+
 extern "C" HMEMORYMODULE WINAPI LoadLibraryMemoryExW(
 	_In_ PVOID BufferAddress,
 	_In_ size_t Reserved,

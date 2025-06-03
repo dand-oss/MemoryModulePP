@@ -580,6 +580,17 @@ NTSTATUS NTAPI MmCleanup() {
 	return status;
 }
 
+// Forward declaration — do NOT include LoadDllMemoryApi.h
+typedef void (*MmpOnDetachCallback)();
+
+static MmpOnDetachCallback g_mmp_on_detach_callback = nullptr;
+
+// Public function to let users register a detach-time callback
+extern "C" void MmpRegisterDetachCallback(MmpOnDetachCallback cb)
+{
+	g_mmp_on_detach_callback = cb;
+}
+
 #ifdef _USRDLL
 extern "C" __declspec(dllexport) BOOL WINAPI ReflectiveMapDll(HMODULE hModule) {
 	PIMAGE_NT_HEADERS headers = RtlImageNtHeader(hModule);
@@ -608,6 +619,7 @@ extern "C" __declspec(dllexport) BOOL WINAPI ReflectiveMapDll(HMODULE hModule) {
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved) {
 	if (ul_reason_for_call == DLL_PROCESS_ATTACH) {
+		DisableThreadLibraryCalls(hModule);
 #ifdef _HAS_AUTO_INITIALIZE
 		if (NT_SUCCESS(MmInitialize())) {
 			if (lpReserved == (PVOID)-1) {
@@ -621,6 +633,12 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
 
 		return FALSE;
 #endif
+	}
+	if (ul_reason_for_call == DLL_PROCESS_DETACH) {
+		if (g_mmp_on_detach_callback) {
+			g_mmp_on_detach_callback();
+			g_mmp_on_detach_callback = nullptr;
+		}
 	}
 
 	return TRUE;

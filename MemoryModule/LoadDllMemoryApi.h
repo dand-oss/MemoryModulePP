@@ -11,6 +11,9 @@ typedef HMODULE HMEMORYMODULE;
 #define NT_SUCCESS(Status) ((static_cast<NTSTATUS>(Status)) >= 0)
 #endif
 
+// Define the callback type
+typedef void (*MmpOnDetachCallback)();
+
 extern "C" {
 
 	HMEMORYMODULE WINAPI LoadLibraryMemory(_In_ PVOID BufferAddress);
@@ -32,7 +35,11 @@ extern "C" {
 	);
 
 	BOOL WINAPI FreeLibraryMemory(_In_ HMEMORYMODULE hMemoryModule);
+	
+	BOOL WINAPI MemoryModuleAddRef(HMEMORYMODULE hMod);
 
+	// Declare the public function to register the callback
+	void MmpRegisterDetachCallback(MmpOnDetachCallback cb);
 }
 
 #define NtLoadDllMemory						LdrLoadDllMemory
