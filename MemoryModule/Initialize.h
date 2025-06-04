@@ -6,4 +6,6 @@ NTSTATUS NTAPI MmCleanup();
 //
 // This function is available only if the MMPP is compiled as a DLL.
 //
-BOOL WINAPI ReflectiveMapDll(HMODULE hModule);
+#ifdef _USRDLL
+extern "C" __declspec(dllexport) BOOL WINAPI ReflectiveMapDll(HMODULE hModule) ;
+#endif
