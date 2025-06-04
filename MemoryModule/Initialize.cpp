@@ -529,6 +529,7 @@ NTSTATUS NTAPI MmInitialize() {
 }
 
 NTSTATUS CleanupLockHeld() {
+    auto rc = STATUS_SUCCESS;
 
 	PLIST_ENTRY ListHead = &NtCurrentPeb()->Ldr->InLoadOrderModuleList, ListEntry = ListHead->Flink;
 	PLDR_DATA_TABLE_ENTRY CurEntry;
@@ -543,20 +544,20 @@ NTSTATUS CleanupLockHeld() {
 			// Make sure all memory module is unloaded.
 			//
 
-			return STATUS_NOT_SUPPORTED;
+			rc = STATUS_NOT_SUPPORTED;
 		}
 	}
 
-	if (--MmpGlobalDataPtr->ReferenceCount > 0) {
-		return STATUS_SUCCESS;
-	}
+    // check global data ref zero after decrement
+	if (!(--MmpGlobalDataPtr->ReferenceCount > 0)) {
 
-	MmpTlsCleanup();
-	MmpCleanupDotNetHooks();
+	    MmpTlsCleanup();
+	    MmpCleanupDotNetHooks();
 
-	NtUnmapViewOfSection(NtCurrentProcess(), MmpGlobalDataPtr->BaseAddress);
-	MmpGlobalDataPtr = nullptr;
-	return STATUS_SUCCESS;
+	    NtUnmapViewOfSection(NtCurrentProcess(), MmpGlobalDataPtr->BaseAddress);
+	    MmpGlobalDataPtr = nullptr;
+    }
+	return rc;
 }
 
 NTSTATUS NTAPI MmCleanup() {
