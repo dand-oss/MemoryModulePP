@@ -247,7 +247,15 @@ DWORD NTAPI MmpUserThreadStart(LPVOID lpThreadParameter) {
         LdrUnlockLoaderLock(LDR_UNLOCK_LOADER_LOCK_FLAG_RAISE_ON_ERRORS, cookie);
     }
 
-    return Context.ThreadStartRoutine(Context.ThreadParameter);
+    // SEH block to handle faults in the thread start routine
+    DWORD result;
+    __try {
+        result = Context.ThreadStartRoutine(Context.ThreadParameter);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        result = GetExceptionCode();
+    }
+    return result;
 }
 
 #if (defined(_WIN64) || defined(_M_ARM))
