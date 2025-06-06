@@ -51,7 +51,7 @@ DWORD WINAPI MmpReleasePostponedTlsWorker(PVOID) {
 						entry = entry->Flink;
 					}
 
-					RtlFreeHeap(RtlProcessHeap(), 0, CONTAINING_RECORD(iter->lpTlsRecord->TlspLdrBlock, TLS_VECTOR, TLS_VECTOR::ModuleTlsData));
+					RtlFreeHeap(RtlProcessHeap(), 0, CONTAINING_RECORD(iter->lpTlsRecord->TlspLdrBlock, TLS_VECTOR, ModuleTlsData));
 					RtlFreeHeap(RtlProcessHeap(), 0, iter->lpTlsRecord);
 					RtlFreeHeap(RtlProcessHeap(), 0, iter->lpOldTlsVector);
 
