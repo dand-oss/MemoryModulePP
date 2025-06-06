@@ -245,7 +245,7 @@ NTSTATUS NTAPI RtlUpdateReferenceCount(
 
 	if (pModule->dwReferenceCount == 0xffffffff)return STATUS_SUCCESS;
 
-	if (PLDR_DATA_TABLE_ENTRY(pModule->LdrEntry)->ObsoleteLoadCount == 0xffff) {
+    if (static_cast<PLDR_DATA_TABLE_ENTRY>(pModule->LdrEntry)->ObsoleteLoadCount == 0xffff) {
 		pModule->dwReferenceCount = 0xffffffff;
 		return STATUS_SUCCESS;
 	}
