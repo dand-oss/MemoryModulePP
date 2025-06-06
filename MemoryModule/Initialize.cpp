@@ -1,7 +1,12 @@
 #include "stdafx.h"
 #include "LoaderPrivate.h"
+#include "LoadDllMemoryApi.h"
 #include <wchar.h>
 #include <cstdio>
+#include <vector>
+#include <string>
+#include <iostream>
+#include <format>
 
 PMMP_GLOBAL_DATA MmpGlobalDataPtr;
 
@@ -534,12 +539,20 @@ NTSTATUS CleanupLockHeld() {
 	PLIST_ENTRY ListHead = &NtCurrentPeb()->Ldr->InLoadOrderModuleList, ListEntry = ListHead->Flink;
 	PLDR_DATA_TABLE_ENTRY CurEntry;
 
+	std::vector<char> buffer(MAX_PATH);
 	while (ListEntry != ListHead) {
 		CurEntry = CONTAINING_RECORD(ListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
 		ListEntry = ListEntry->Flink;
 
-		if (IsValidMemoryModuleHandle((HMEMORYMODULE)CurEntry->DllBase)) {
+		const auto dll_mod = static_cast<HMEMORYMODULE>(CurEntry->DllBase);
+		if (IsValidMemoryModuleHandle(dll_mod)) {
 
+		    GetModuleFileNameA(dll_mod, buffer.data(), buffer.size());
+		    std::cerr << std::format(
+                "CleanupLockHeld: ERROR: {} has refs {} in MmCleanup\n",
+                buffer.data(),
+                MemoryRefCount(dll_mod));
+ 
 			//
 			// Make sure all memory module is unloaded.
 			//
