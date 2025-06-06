@@ -50,7 +50,7 @@ PMEMORYMODULE WINAPI MapMemoryModuleHandle(HMEMORYMODULE hModule) {
 	if (!nh)return nullptr;
 
 	int sizeOfHeaders = MmpSizeOfImageHeadersUnsafe(hModule);
-	PMEMORYMODULE pModule = reinterpret_cast<PMEMORYMODULE>((LPBYTE)hModule + sizeOfHeaders);
+	PMEMORYMODULE pModule = reinterpret_cast<PMEMORYMODULE>(reinterpret_cast<LPBYTE>(hModule) + sizeOfHeaders);
 	if (pModule->Signature != MEMORY_MODULE_SIGNATURE || pModule->codeBase != reinterpret_cast<LPBYTE>(hModule))return nullptr;
 	return pModule;
 }
@@ -70,7 +70,7 @@ NTSTATUS MmpInitializeStructure(DWORD ImageFileSize, LPCVOID ImageFileBuffer, PI
 	PIMAGE_SECTION_HEADER pSections = IMAGE_FIRST_SECTION(ImageHeaders);
 	for (int i = 0; i < ImageHeaders->FileHeader.NumberOfSections; ++i) {
 		if (pSections[i].VirtualAddress < sizeOfHeaders + sizeof(MEMORYMODULE)) {
-			return STATUS_NOT_SUPPORTED;
+			return STATUS_NOT_IMPLEMENTED;
 		}
 	}
 
@@ -79,11 +79,11 @@ NTSTATUS MmpInitializeStructure(DWORD ImageFileSize, LPCVOID ImageFileBuffer, PI
 	//
 	PMEMORYMODULE hMemoryModule = reinterpret_cast<PMEMORYMODULE>(ImageHeaders->OptionalHeader.ImageBase + sizeOfHeaders);
 	RtlZeroMemory(hMemoryModule, sizeof(MEMORYMODULE));
-	hMemoryModule->codeBase = reinterpret_cast<PBYTE>(ImageHeaders->OptionalHeader.ImageBase);
+	hMemoryModule->codeBase = reinterpret_cast<PBYTE>(static_cast<size_t>(ImageHeaders->OptionalHeader.ImageBase));
 	hMemoryModule->dwImageFileSize = ImageFileSize;
 	hMemoryModule->Signature = MEMORY_MODULE_SIGNATURE;
-	hMemoryModule->SizeofHeaders = ImageHeaders->OptionalHeader.SizeOfHeaders;
-	hMemoryModule->lpReserved = const_cast<LPVOID>(ImageFileBuffer);
+	hMemoryModule->SizeofHeaders = sizeOfHeaders;
+	hMemoryModule->lpReserved = const_cast<PVOID>(ImageFileBuffer);
 	hMemoryModule->dwReferenceCount = 1;
 
 	return STATUS_SUCCESS;
@@ -133,7 +133,7 @@ NTSTATUS MemoryLoadLibrary(
 		//
 		// Check dos magic
 		//
-		dos_header = reinterpret_cast<PIMAGE_DOS_HEADER>(const_cast<LPVOID>(data));
+		dos_header = reinterpret_cast<PIMAGE_DOS_HEADER>(const_cast<PVOID>(data));
 		if (dos_header->e_magic != IMAGE_DOS_SIGNATURE) {
 			status = STATUS_INVALID_IMAGE_FORMAT;
 			__leave;
@@ -176,7 +176,7 @@ NTSTATUS MemoryLoadLibrary(
 	LPBYTE base = nullptr;
 	if ((old_header->OptionalHeader.DllCharacteristics & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE) == 0) {
 		base = static_cast<LPBYTE>(VirtualAlloc(
-			reinterpret_cast<LPVOID>(old_header->OptionalHeader.ImageBase),
+			reinterpret_cast<PVOID>(old_header->OptionalHeader.ImageBase),
 			old_header->OptionalHeader.SizeOfImage,
 			MEM_RESERVE,
 			PAGE_EXECUTE_READWRITE
@@ -241,7 +241,7 @@ NTSTATUS MemoryLoadLibrary(
 			}
 
 			LPVOID dest = VirtualAlloc(
-				reinterpret_cast<LPSTR>(new_header->OptionalHeader.ImageBase) + section->VirtualAddress,
+				reinterpret_cast<PSTR>(new_header->OptionalHeader.ImageBase) + section->VirtualAddress,
 				size,
 				MEM_COMMIT,
 				PAGE_READWRITE
@@ -286,7 +286,7 @@ NTSTATUS MemoryLoadLibrary(
 
 			if (dir->Size && dir->VirtualAddress) {
 				while ((reinterpret_cast<LPBYTE>(relocation) < static_cast<LPBYTE>(base) + dir->VirtualAddress + dir->Size) && relocation->VirtualAddress > 0) {
-					auto relInfo = (_REBASE_INFO*)&relocation->TypeOffset;
+					auto relInfo = reinterpret_cast<_REBASE_INFO*>(&relocation->TypeOffset);
 					for (DWORD i = 0; i < relocation->TypeOffsetCount(); ++i, ++relInfo) {
 						switch (relInfo->Type) {
 						case IMAGE_REL_BASED_HIGHLOW: *reinterpret_cast<DWORD*>(base + relocation->VirtualAddress + relInfo->Offset) += static_cast<DWORD>(locationDelta); break;
@@ -300,7 +300,7 @@ NTSTATUS MemoryLoadLibrary(
 
 					// advance to next relocation block
 					//relocation->VirtualAddress += module->headers_align;
-					relocation = static_cast<decltype(relocation)>(OffsetPointer(relocation, relocation->SizeOfBlock));
+					relocation = reinterpret_cast<PIMAGE_BASE_RELOCATION_HEADER>(OffsetPointer(relocation, relocation->SizeOfBlock));
 				}
 			}
 
@@ -308,7 +308,7 @@ NTSTATUS MemoryLoadLibrary(
 		if (!NT_SUCCESS(status))break;
 
 		__try {
-			*MemoryModuleHandle = (HMEMORYMODULE)base;
+			*MemoryModuleHandle = reinterpret_cast<HMEMORYMODULE>(base);
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER) {
 			status = GetExceptionCode();
@@ -318,7 +318,7 @@ NTSTATUS MemoryLoadLibrary(
 		return status;
 	} while (false);
 
-	MemoryFreeLibrary((HMEMORYMODULE)base);
+	MemoryFreeLibrary(reinterpret_cast<HMEMORYMODULE>(base));
 	return status;
 }
 

@@ -250,7 +250,7 @@ extern "C" NTSTATUS NTAPI LdrUnloadDllMemory(_In_ HMEMORYMODULE BaseAddress) {
 
 		module->underUnload = true;
 		if (module->initialized) {
-			PLDR_INIT_ROUTINE(static_cast<LPVOID>(module->codeBase + headers->OptionalHeader.AddressOfEntryPoint))(
+			reinterpret_cast<PLDR_INIT_ROUTINE>(static_cast<LPVOID>(module->codeBase + headers->OptionalHeader.AddressOfEntryPoint))(
 				reinterpret_cast<HINSTANCE>(module->codeBase),
 				DLL_PROCESS_DETACH,
 				0
