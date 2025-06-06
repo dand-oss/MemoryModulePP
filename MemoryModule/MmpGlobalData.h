@@ -141,16 +141,5 @@ typedef struct _MMP_GLOBAL_DATA {
 
 }MMP_GLOBAL_DATA, * PMMP_GLOBAL_DATA;
 
-#define MMP_GLOBAL_DATA_SIZE (\
-	sizeof(MMP_GLOBAL_DATA) + \
-	sizeof(MMP_BASE_ADDRESS_INDEX_DATA) + \
-	sizeof(MMP_INVERTED_FUNCTION_TABLE_DATA) + \
-	sizeof(MMP_LDR_ENTRY_DATA) + \
-	sizeof(MMP_TLS_DATA) + \
-	sizeof(MMP_DOT_NET_DATA) + \
-	sizeof(MMP_FUNCTIONS) + \
-	sizeof(PMMP_IAT_DATA)\
-)
-
 extern PMMP_GLOBAL_DATA MmpGlobalDataPtr;
 extern "C" PMMP_GLOBAL_DATA NTAPI GetMmpGlobalDataPtr() ;
