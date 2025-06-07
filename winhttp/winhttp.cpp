@@ -19,6 +19,19 @@ static double toMB(size_t bytes) {
     return static_cast<double>(bytes) / 1024.0 / 1024.0;
 }
 
+// Portable logging wrappers using std::format_string
+template<typename... Args>
+void logInfo(std::format_string<Args...> fmt, Args&&... args) {
+    if (g_verbose) {
+        std::cout << std::format(fmt, std::forward<Args>(args)...) << std::endl;
+    }
+}
+
+template<typename... Args>
+void logError(std::format_string<Args...> fmt, Args&&... args) {
+    std::cerr << std::format(fmt, std::forward<Args>(args)...) << std::endl;
+}
+
 // Find DLL in system path, returning std::filesystem::path with single return
 [[nodiscard]]
 static std::filesystem::path FindDllInPath(const std::wstring& dllName) noexcept
@@ -54,12 +67,12 @@ ReadDllToMemory(const std::filesystem::path& filePath)
         } else {
             // Report size
             const auto fileSize = static_cast<size_t>(streampos);
-            std::cout << std::format("    {:.3f} MB for {}\n", toMB(fileSize), filePath.string());
+            logInfo("    {:.3f} MB for {}\n", toMB(fileSize), filePath.string());
 
             // Allocate buffer
             std::vector<char> buffer(fileSize);
             if (buffer.empty()) {
-                std::cerr << std::format("    Failed to allocate {:.3f} MB in std::vector for {}\n", toMB(fileSize), filePath.string());
+                logError("    Failed to allocate {:.3f} MB in std::vector for {}\n", toMB(fileSize), filePath.string());
                 result = std::unexpected(std::make_error_code(std::errc::not_enough_memory));
             } else {
                 // Reset to beginning of file
@@ -188,7 +201,7 @@ static int test(
     int serverPort,
     const std::wstring& objectName)
 {
-    std::wcout << std::format(L"Using DLL at: {}\n", dllFullPath.wstring());
+    logInfo("Using DLL at: {}\n", dllFullPath.string());
 
     // Initialize API with DLL path
     EnsureDll api(dllFullPath);
@@ -301,18 +314,19 @@ static int test(
 } // hSession destroyed here
 
 // Example usage
-extern "C" int main(int argc, char* argv[]) {
+extern "C" int main(int argc, char* argv[])
+{
     std::wstring dll_name(L"winhttp.dll");
     const std::filesystem::path dllPath{dll_name};
 
     // Find DLL in system path
     const auto dllFullPath = FindDllInPath(dll_name);
     if (dllFullPath.empty()) {
-        std::wcout << std::format(L"DLL not found: {}\n", dll_name);
+        logInfo("DLL not found: {}\n", dll_name);
         return 1;
     }
 
-    std::wcout << std::format(L"Found {} for {}\n", dllFullPath.wstring(), dll_name);
+    logInfo("Found {} for {}\n", dllFullPath.string(), dll_name);
 
     // Default values
     std::wstring serverName = L"neverssl.com";
@@ -357,7 +371,7 @@ extern "C" int main(int argc, char* argv[]) {
 
     const auto status = MmCleanup();
     if ( !status ) {
-        std::cerr << "MmCleanup failed" << std::endl ;
+        logError("MmCleanup failed");
     }
     return rc ;
 }
