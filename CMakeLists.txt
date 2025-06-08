@@ -14,6 +14,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # add _d to debug targets
 SET(CMAKE_DEBUG_POSTFIX _d)
 
+# turn on for all..
+add_compile_options(-fsanitize=address)
+
 # build spec done in subdirectories
 add_subdirectory(3rdparty)
 add_subdirectory(a)
