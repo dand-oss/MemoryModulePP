@@ -1,3 +1,14 @@
+This fork
+
+- adds cmake build
+- fixes DLL version
+- allows hooking load/free resolver
+- provides example of loading multiple dependent DLLs from an sqlite database
+
+The biggest issue is that our DLL ReferenceCount is not shared with DLLS used by Windows LoadLibrary().
+
+See test/test.cpp test_ref_count()
+
 # MemoryModulePP
 
 MemoryModulePP, used to load a DLL from memory. MemoryModulePP is compatible with Win32 API and supports exception handling.
