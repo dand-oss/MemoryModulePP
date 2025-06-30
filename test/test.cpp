@@ -1,5 +1,5 @@
-#include "../MemoryModule/stdafx.h"
-#include "../MemoryModule/LoadDllMemoryApi.h"
+#include "stdafx.h"
+#include "LoadDllMemoryApi.h"
 #include <cstdio>
 #include <string>
 #pragma comment(lib,"ntdll.lib")
@@ -30,19 +30,18 @@ LdrpHashTable = %p\n\n\
 }
 
 static PVOID ReadDllFile(const std::string& FilePath) {
-    LPVOID buffer;
     size_t size;
     FILE* f;
     fopen_s(&f, FilePath.c_str(), "rb");
-    if (!f)return 0;
+    if (!f) return nullptr;
     _fseeki64(f, 0, SEEK_END);
     if (!(size = _ftelli64(f))) {
         fclose(f);
-        return 0;
+        return nullptr;
     }
     _fseeki64(f, 0, SEEK_SET);
 
-    buffer = VirtualAlloc(0, size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+    auto buffer = VirtualAlloc(0, size, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 
     fread(buffer, 1, size, f);
     fclose(f);
@@ -64,6 +63,43 @@ static std::string ResolveWithModulePath(const std::string& dll_path)
     }
 
     return rc ;
+}
+
+static void test_ref_count(HMODULE hModule, const std::string& dll_path)
+{
+    // print the reference count
+    const auto init_refcount = MemoryRefCount(hModule) ;
+    printf("%d reference for %s after LoadLibraryMemory()\n",
+        init_refcount, dll_path.c_str() );
+
+    // load the same dll via windows
+    // which should increase reference count each time
+    const auto num_loads = 10 ;
+    for ( auto ii = num_loads ; ii-- ; ) {
+        const auto mod = LoadLibraryA(dll_path.c_str());
+        if (!mod) {
+            printf("LoadLibraryA() failed\n");
+            break;
+        }
+    }
+
+    // report reference result
+    const auto final_refs = MemoryRefCount(hModule);
+    const auto expected_refs = num_loads + init_refcount ;
+    if ( final_refs != expected_refs) {
+        printf("ERROR LoadLibraryA() ignored: final_refs(%d) != expected_refs(%d)\n",
+            final_refs, expected_refs);
+    }
+    else {
+        printf("Hey DLL reference counting started working!\n");
+    }
+
+    // have windows let go..
+    /*
+    for ( auto ii = num_loads ; ii-- ; ) {
+        FreeLibrary(hModule);
+    }
+    */
 }
 
 int test(const std::string& dll_path) {
@@ -132,6 +168,8 @@ int test(const std::string& dll_path) {
             }
         }
     }
+
+    test_ref_count(hModule, dll_path);
 
 end:
     LdrUnloadDllMemory(hModule);
