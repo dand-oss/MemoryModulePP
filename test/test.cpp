@@ -71,6 +71,68 @@ static std::string ResolveWithModulePath(const std::string& dll_path)
     return rc ;
 }
 
+static void test_fwd_export(HMODULE hModule)
+{
+    FARPROC pfn;
+    pfn = (decltype(pfn))(GetProcAddress(hModule, "Socket")); //ws2_32.WSASocketW
+    pfn = (decltype(pfn))(GetProcAddress(hModule, "VerifyTruse")); //wintrust.WinVerifyTrust
+}
+
+static void test_exception(HMODULE hModule)
+{
+    using _exception = int(*)(int code);
+    _exception exception = nullptr;
+
+    exception = (_exception)GetProcAddress(hModule, "exception");
+    if (exception) {
+        for (int i = 0; i < 5; ++i) {
+            exception(i);
+        }
+    }
+}
+
+static void test_tls(HMODULE hModule)
+{
+    auto pfn = GetProcAddress(hModule, "thread");
+    if (pfn && pfn()) {
+        printf("thread test failed.\n");
+    }
+}
+
+static void test_resource(HMODULE hModule)
+{
+    char str[10];
+    if (!LoadStringA(hModule, 101, str, 10)) {
+        printf("load string failed.\n");
+    }
+    else {
+        printf("%s\n", str);
+    }
+
+    HRSRC hRsrc;
+    if (!(hRsrc = FindResourceA(hModule, MAKEINTRESOURCEA(102), "BINARY"))) {
+        printf("find binary resource failed.\n");
+    }
+    else {
+        DWORD SizeofRes;
+        if ((SizeofRes = SizeofResource(hModule, hRsrc)) != 0x10) {
+            printf("invalid res size.\n");
+        }
+        else {
+            HGLOBAL gRes;
+            if (!(gRes = LoadResource(hModule, hRsrc))) {
+                printf("load res failed.\n");
+            }
+            else {
+                if (!LockResource(gRes))printf("lock res failed.\n");
+                else {
+                    printf("resource test success.\n");
+                }
+            }
+        }
+    }
+}
+
 static void test_ref_count(HMODULE hModule, const std::string& dll_path)
 {
     // print the reference count
@@ -113,13 +175,6 @@ int test(const std::string& dll_path) {
     HMODULE hModule = nullptr;
     FARPROC pfn = nullptr;
 
-    typedef int(*_exception)(int code);
-    _exception exception = nullptr;
-    HRSRC hRsrc;
-    DWORD SizeofRes;
-    HGLOBAL gRes;
-    char str[10];
-
     LPVOID buffer = ReadDllFile(dll_path);
     if ( !buffer ) {
         printf("failed to find %s.\n", dll_path.c_str());
@@ -132,51 +187,10 @@ int test(const std::string& dll_path) {
         goto end;
     }
 
-    //forward export
-    pfn = (decltype(pfn))(GetProcAddress(hModule, "Socket")); //ws2_32.WSASocketW
-    pfn = (decltype(pfn))(GetProcAddress(hModule, "VerifyTruse")); //wintrust.WinVerifyTrust
-
-    //exception
-    exception = (_exception)GetProcAddress(hModule, "exception");
-    if (exception) {
-        for (int i = 0; i < 5; ++i) {
-            exception(i);
-        }
-    }
-
-    //tls
-    pfn = GetProcAddress(hModule, "thread");
-    if (pfn && pfn()) {
-        printf("thread test failed.\n");
-    }
-
-    //resource
-    if (!LoadStringA(hModule, 101, str, 10)) {
-        printf("load string failed.\n");
-    }
-    else {
-        printf("%s\n", str);
-    }
-    if (!(hRsrc = FindResourceA(hModule, MAKEINTRESOURCEA(102), "BINARY"))) {
-        printf("find binary resource failed.\n");
-    }
-    else {
-        if ((SizeofRes = SizeofResource(hModule, hRsrc)) != 0x10) {
-            printf("invalid res size.\n");
-        }
-        else {
-            if (!(gRes = LoadResource(hModule, hRsrc))) {
-                printf("load res failed.\n");
-            }
-            else {
-                if (!LockResource(gRes))printf("lock res failed.\n");
-                else {
-                    printf("resource test success.\n");
-                }
-            }
-        }
-    }
-
+    test_fwd_export(hModule) ;
+    test_exception(hModule) ;
+    test_tls(hModule) ;
+    test_resource(hModule) ;
     test_ref_count(hModule, dll_path);
 
 end:
