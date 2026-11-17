@@ -3,7 +3,7 @@
 #include <wchar.h>
 #include <cstdio>
 
-PMMP_GLOBAL_DATA MmpGlobalDataPtr;
+extern "C" PMMP_GLOBAL_DATA MmpGlobalDataPtr = nullptr;
 
 // DLL compliant access
 extern "C" PMMP_GLOBAL_DATA NTAPI GetMmpGlobalDataPtr()
